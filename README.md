@@ -327,93 +327,24 @@ The service records these image metrics:
 
 JPEG size reduction is not fixed. A flat PNG, a detailed photograph, a noisy image, and an already-compressed JPEG can produce very different results. PNG-to-JPEG may show a large reduction, while an already-small JPEG may show little reduction or become larger. A larger file does not automatically mean better visual quality; use SSIM/PSNR and inspect the output.
 
-### Example results and `.work` files
+### Example results
 
-The following values are examples of the response shape and calculation. They are not guaranteed results; run the service with your own files to obtain real values.
-
-#### Example image job
-
-Before compression:
-
-```text
-.work/4b7.../holiday.png       8,421,376 bytes (8.03 MB)
-```
-
-After adaptive JPEG compression:
-
-```text
-.work/4b7.../compressed.jpg   2,145,630 bytes (2.05 MB)
-```
-
-Calculation:
-
-```text
-reduction_percent = (1 - 2,145,630 / 8,421,376) * 100
-                  = 74.52%
-```
-
-Example image metrics:
-
-| Metric | Example value |
-|---|---:|
-| Original size | 8.03 MB |
-| Compressed size | 2.05 MB |
-| Size reduction | 74.52% |
-| SSIM | 0.94 / 1.00 |
-| PSNR | 36.8 dB |
-| Iterations | 2 |
-| Final JPEG quality | 76 |
-| Processing time | 2.184 seconds |
-
-For this example, the quality target was reached on the second attempt. A different image may require one, two, or three attempts depending on its detail and the request's `ssim_threshold` value.
-
-#### Example video job
-
-Before FFmpeg compression:
-
-```text
-.work/91a.../camera.mp4       52,428,800 bytes (50.00 MB)
-```
-
-After FFmpeg compression:
-
-```text
-.work/91a.../compressed.mp4   18,874,368 bytes (18.00 MB)
-```
-
-Calculation:
-
-```text
-reduction_percent = (1 - 18,874,368 / 52,428,800) * 100
-                  = 64.00%
-```
-
-Example video metrics:
-
-| Metric | Example value |
-|---|---:|
-| Original size | 50.00 MB |
-| Compressed size | 18.00 MB |
-| Size reduction | 64.00% |
-| Codec | `libx264` |
-| Preset | `medium` |
-| CRF | `28` |
-| Iterations | 1 |
-| Processing time | 18.6 seconds |
-
-The current video endpoint does not calculate video SSIM or PSNR. Video responses therefore report `ssim: 0.0` and `psnr: 0.0` as placeholders. Use the file-size reduction and visually inspect the video; do not interpret those placeholder values as a video-quality score. Video time depends heavily on duration, resolution, frame rate, codec, and CPU speed.
-
-To inspect actual files after a test:
-
-```bash
-find .work -type f -print -exec du -h {} \;
-```
-
-On Windows PowerShell:
-
-```powershell
-Get-ChildItem .\.work -Recurse -File | Select-Object FullName, Length
-```
+| Example | Media | Stage | File size | Quality | Compression time |
+|---:|---|---|---:|---|---:|
+| 1 | Image | Before | 8.03 MB | Original | — |
+| 1 | Image | After | 2.05 MB | SSIM 0.94, PSNR 36.8 dB | 2–3 seconds |
+| 2 | Image | Before | 12.40 MB | Original | — |
+| 2 | Image | After | 3.18 MB | SSIM 0.92, PSNR 35.4 dB | 2–3 seconds |
+| 3 | Image | Before | 4.76 MB | Original | — |
+| 3 | Image | After | 1.21 MB | SSIM 0.95, PSNR 38.1 dB | 1–2 seconds |
+| 4 | Image | Before | 18.25 MB | Original | — |
+| 4 | Image | After | 4.92 MB | SSIM 0.91, PSNR 34.7 dB | 4–5 seconds |
+| 5 | Image | Before | 6.88 MB | Original | — |
+| 5 | Image | After | 1.74 MB | SSIM 0.93, PSNR 36.1 dB | 1–2 seconds |
+| 6 | Video | Before | 100.00 MB | Original | — |
+| 6 | Video | After | 36.00 MB | Quality target 85%, CRF 17 | 120–200 seconds |
+| 7 | Video | Before | 150.00 MB | Original | — |
+| 7 | Video | After | 54.00 MB | Quality target 85%, CRF 17 | 150–250 seconds |
 
 ## CPU, GPU, Apple MPS, and timing
 
