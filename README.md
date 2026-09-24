@@ -1,121 +1,422 @@
 # CompressAI Vision
 
-CompressAI Vision is an asynchronous FastAPI service and browser test bench for image compression. It analyzes image features, predicts encoding parameters, evaluates quality, and adjusts compression until the configured quality target is reached.
+CompressAI Vision is an asynchronous FastAPI service and browser test bench for image and video compression. For images, the service:
+
+1. Streams an upload into an isolated job directory.
+2. Extracts lightweight image features: entropy, edge density, and variance.
+3. Predicts a JPEG quality value.
+4. Compresses the image with Pillow.
+5. Measures approximate SSIM and PSNR.
+6. Increases quality and retries when the configured SSIM target is not reached.
+
+The project is intentionally small and local-first. Jobs and uploaded files are stored locally and job state is kept in memory, so it is suitable for development and demonstrations. It is not yet a durable multi-process production queue.
+
+## Features
+
+- FastAPI REST API with versioned `/api/v1` routes.
+- Browser UI with drag-and-drop upload, preview, status polling, and download.
+- JPEG image compression with adaptive quality selection.
+- Approximate SSIM and PSNR evaluation.
+- Fixed-quality comparison endpoint.
+- FFmpeg-based video compression endpoint.
+- Optional API-key protection through `X-API-Key`.
+- Structured JSON application logging.
+- Local temporary job storage under `.work` by default.
 
 ## Requirements
 
-- Python 3.11+
-- [`uv`](https://docs.astral.sh/uv/)
-- FFmpeg for the video endpoint and health check
+- Python 3.11 or newer.
+- [`uv`](https://docs.astral.sh/uv/) for environment and dependency management.
+- FFmpeg for video compression and the FFmpeg health check.
+- A modern browser for the test UI.
 
-Install FFmpeg on macOS with `brew install ffmpeg`, then verify it with `ffmpeg -version`.
+### Install system dependencies
 
-## Run locally
+On macOS with Homebrew:
+
+```bash
+brew install uv ffmpeg
+python3 --version
+uv --version
+ffmpeg -version
+```
+
+On Linux, install Python and FFmpeg using the package manager for your distribution, then install `uv` using the official uv instructions.
+
+The application itself does not require PyTorch, CUDA, Metal, or an Apple MPS runtime. Its current image pipeline is Pillow and NumPy based and runs on the CPU.
+
+## Install the project
+
+From the repository root:
 
 ```bash
 uv sync
+```
+
+Install development tools as well:
+
+```bash
+uv sync --dev
+```
+
+The runtime dependencies are declared in `pyproject.toml` and locked in `uv.lock`:
+
+| Package | Purpose |
+|---|---|
+| `fastapi` | API framework and request handling |
+| `uvicorn[standard]` | ASGI development server |
+| `python-multipart` | Multipart file uploads |
+| `pydantic-settings` | Environment-based configuration |
+| `pillow` | Image decoding, orientation, and JPEG encoding |
+| `numpy` | Feature extraction and quality calculations |
+| `aiofiles` | Async file support for the application environment |
+| `orjson` | Fast JSON support for the application environment |
+| `pytest`, `httpx` | Development and API tests |
+| `ruff` | Formatting and linting |
+| `mypy` | Static type checking |
+| `pre-commit` | Repository hooks |
+
+## Run locally
+
+### Option 1: Uvicorn
+
+```bash
 uv run uvicorn app.main:app --reload
 ```
 
-Or use the development entrypoint:
+The server listens on `http://127.0.0.1:8000` by default.
+
+### Option 2: Development script
 
 ```bash
 uv run python scripts/run.py
 ```
 
-Open <http://localhost:8000/static/test.html> for the browser test bench or <http://localhost:8000/docs> for API documentation.
-
-## Browser UI
-
-The static UI supports image/video selection, drag-and-drop uploads, previews, API/FFmpeg status, job polling, and downloads. Completed image jobs display the before-compression size, after-compression size, and percentage of size reduced. It uses plain HTML, CSS, and JavaScript with no frontend build step.
-
-## API
-
-All active endpoints use the `/api/v1` prefix.
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/v1/compress/image` | Queue image compression; multipart field: `file` |
-| POST | `/api/v1/compress/video` | Check FFmpeg and queue a video job |
-| POST | `/api/v1/compare/image` | Compare adaptive compression with a fixed-quality baseline |
-| GET | `/api/v1/jobs/{job_id}` | Read job status and compression metrics |
-| GET | `/api/v1/jobs/{job_id}/download` | Download a completed result |
-| GET | `/api/v1/health` | Read API, FFmpeg, worker, and chunk status |
-| GET | `/api/v1/config` | Read client-safe size and quality limits |
-
-Example:
+The script reads these optional environment variables:
 
 ```bash
-curl -F file=@photo.png http://localhost:8000/api/v1/compress/image
-curl http://localhost:8000/api/v1/jobs/<job_id>
-curl -o compressed.jpg http://localhost:8000/api/v1/jobs/<job_id>/download
+HOST=127.0.0.1 PORT=8000 RELOAD=1 uv run python scripts/run.py
 ```
 
-Submission returns `202` with `{"job_id":"...","status":"queued"}`. If FFmpeg is unavailable, the video endpoint returns `503 Service Unavailable`. The current background worker is image-oriented; full video transcoding is planned work.
+### Open the UI and API documentation
+
+- Browser UI: <http://127.0.0.1:8000/static/test.html>
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- ReDoc: <http://127.0.0.1:8000/redoc>
+- OpenAPI JSON: <http://127.0.0.1:8000/openapi.json>
+
+The UI is plain HTML, CSS, and JavaScript. It has no separate frontend build or `npm install` step.
 
 ## Configuration
 
-Copy `.env.example` to `.env`:
+Copy the example environment file before changing settings:
+
+```bash
+cp .env.example .env
+```
+
+Example `.env`:
 
 ```env
 WORK_DIR=.work
 CREATE_WORK_DIR=true
 MAX_FILE_SIZE=524288000
+SMALL_FILE_THRESHOLD=20971520
 CHUNK_SIZE=5242880
-SSIM_THRESHOLD=0.90
 MAX_ITERATIONS=3
+SSIM_THRESHOLD=0.90
 RATE_LIMIT_PER_MINUTE=30
+MAX_WORKERS=1
 FFMPEG_BINARY=ffmpeg
+FFMPEG_TIMEOUT=300
+# API_KEY=change-me
 ```
 
-`API_KEY` is optional. When set, requests must include an `X-API-Key` header. This is a minimal starting point; JWT/OAuth is the future upgrade path.
+Important settings:
 
-Set `CREATE_WORK_DIR=false` to prevent startup from creating the configured work directory. Upload and compression operations require that directory to exist, so leave it set to `true` for normal local use.
+| Setting | Default | Meaning |
+|---|---:|---|
+| `WORK_DIR` | `.work` | Root directory for uploaded and compressed files |
+| `CREATE_WORK_DIR` | `true` | Creates `WORK_DIR` during application startup |
+| `MAX_FILE_SIZE` | `524288000` | Maximum upload size in bytes: 500 MiB |
+| `SMALL_FILE_THRESHOLD` | `20971520` | Configured small-file threshold: 20 MiB |
+| `CHUNK_SIZE` | `5242880` | Configured application chunk size: 5 MiB |
+| `MAX_ITERATIONS` | `3` | Maximum adaptive image-compression attempts |
+| `SSIM_THRESHOLD` | `0.90` | Target approximate SSIM for adaptive image compression |
+| `MAX_WORKERS` | unset | Reported worker count; defaults to 1 in the health response |
+| `FFMPEG_BINARY` | `ffmpeg` | FFmpeg executable name or absolute path |
+| `FFMPEG_TIMEOUT` | `300` | Video compression timeout in seconds |
+| `API_KEY` | unset | Enables API-key protection when set |
+
+If `CREATE_WORK_DIR=false`, create the directory yourself before starting the server:
+
+```bash
+mkdir -p .work
+```
+
+## How `.work` is used
+
+Each upload receives a random directory under `WORK_DIR`. A typical image job looks like this:
+
+```text
+.work/
+└── 9c3...random-id.../
+    ├── photo.png          # original uploaded file
+    └── compressed.jpg     # generated image result
+```
+
+For a video job, the generated file is named `compressed.mp4`. The directory remains after the job so the download endpoint can serve the result. The in-memory job store points to these paths. Since there is no cleanup worker yet, remove old job directories periodically during local testing:
+
+```bash
+find .work -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} +
+```
+
+Only run cleanup when no active jobs depend on those directories. Do not commit `.work` or uploaded files to Git.
+
+## Browser UI workflow
+
+1. Start the API.
+2. Open `/static/test.html`.
+3. Select or drop an image or video.
+4. Submit the upload.
+5. The UI receives a job ID and polls `/api/v1/jobs/{job_id}`.
+6. When the state becomes `done`, use the download action.
+7. For completed image jobs, inspect original size, compressed size, percentage reduction, SSIM, PSNR, processing time, iterations, and selected parameters.
+
+The UI also displays API and FFmpeg availability. The browser does not directly access `.work`; all files are served through the API.
+
+## API reference
+
+All active endpoints use the `/api/v1` prefix. Upload endpoints expect a multipart form field named `file`.
+
+| Method | Path | Response | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/compress/image` | `202` | Queue adaptive image compression |
+| `POST` | `/api/v1/compress/video` | `202` | Queue FFmpeg video compression |
+| `POST` | `/api/v1/compare/image` | `200` | Compare adaptive output with quality-75 JPEG |
+| `GET` | `/api/v1/jobs/{job_id}` | `200` | Read job state and metrics |
+| `GET` | `/api/v1/jobs/{job_id}/download` | file | Download a completed result |
+| `GET` | `/api/v1/health` | `200` | Check API, FFmpeg, workers, and chunk size |
+| `GET` | `/api/v1/config` | `200` | Read safe client configuration values |
+
+### Image compression with curl
+
+Submit an image:
+
+```bash
+curl -sS -X POST \
+  -F "file=@./photo.png" \
+  http://127.0.0.1:8000/api/v1/compress/image
+```
+
+Example response:
+
+```json
+{"job_id":"8e8...","status":"queued"}
+```
+
+Poll the job, replacing the ID:
+
+```bash
+curl -sS http://127.0.0.1:8000/api/v1/jobs/8e8...
+```
+
+Example completed response:
+
+```json
+{
+  "job_id": "8e8...",
+  "status": "done",
+  "metrics": {
+    "original_size": 8421376,
+    "compressed_size": 2145630,
+    "original_size_human": "8.03 MB",
+    "compressed_size_human": "2.05 MB",
+    "reduction_percent": 74.52,
+    "ssim": 0.94,
+    "psnr": 36.8,
+    "processing_time_seconds": 2.1841,
+    "iterations": 2,
+    "params_used": {
+      "codec": "JPEG",
+      "quality": 76,
+      "reason": "entropy/edge-detail heuristic"
+    }
+  },
+  "download_url": "/api/v1/jobs/8e8.../download",
+  "error": null
+}
+```
+
+The numeric values above are illustrative. Actual size, quality, iteration, and time values depend on the source image and machine. Download the result with:
+
+```bash
+curl -L -o compressed.jpg \
+  http://127.0.0.1:8000/api/v1/jobs/8e8.../download
+```
+
+### Compare adaptive and baseline compression
+
+```bash
+curl -sS -X POST \
+  -F "file=@./photo.png" \
+  http://127.0.0.1:8000/api/v1/compare/image
+```
+
+This endpoint returns `ai` and `baseline` metrics. The baseline is a single JPEG pass at quality 75. The adaptive path can use multiple passes, up to `MAX_ITERATIONS`.
+
+### Video compression
+
+```bash
+curl -sS -X POST \
+  -F "file=@./input.mp4" \
+  http://127.0.0.1:8000/api/v1/compress/video
+```
+
+The video path uses FFmpeg with `libx264`, medium preset, CRF 28, and AAC audio. It does not use the Pillow image-quality loop, so video jobs report `ssim: 0.0`, `psnr: 0.0`, and one iteration. The endpoint returns `503` if FFmpeg is not available.
+
+### Health and configuration
+
+```bash
+curl -sS http://127.0.0.1:8000/api/v1/health
+curl -sS http://127.0.0.1:8000/api/v1/config
+```
+
+If `API_KEY` is set, add the header to every API request:
+
+```bash
+curl -H "X-API-Key: change-me" \
+  http://127.0.0.1:8000/api/v1/health
+```
+
+## Before-and-after size and quality
+
+The service records these image metrics:
+
+- `original_size`: original file size in bytes.
+- `compressed_size`: generated file size in bytes.
+- `reduction_percent`: `(1 - compressed_size / original_size) * 100`.
+- `ssim`: approximate structural similarity, bounded from 0 to 1; higher is better.
+- `psnr`: peak signal-to-noise ratio in dB; higher is generally better.
+- `processing_time_seconds`: elapsed time spent in the image comparison/compression operation.
+- `iterations`: number of image encoding/evaluation attempts.
+- `params_used`: codec, final quality, and predictor reason.
+
+JPEG size reduction is not fixed. A flat PNG, a detailed photograph, a noisy image, and an already-compressed JPEG can produce very different results. PNG-to-JPEG may show a large reduction, while an already-small JPEG may show little reduction or become larger. A larger file does not automatically mean better visual quality; use SSIM/PSNR and inspect the output.
+
+## CPU, GPU, Apple MPS, and timing
+
+### What the current implementation uses
+
+The current implementation has no GPU acceleration. Pillow and NumPy run on the CPU, and the asynchronous API moves blocking Pillow encoding to a worker thread. There is no CUDA code, no PyTorch dependency, and no Apple Metal/MPS code.
+
+| Hardware | Current support | Expected behavior |
+|---|---|---|
+| CPU | Yes | Normal and only supported image path |
+| NVIDIA GPU/CUDA | No | Not used by this version |
+| Apple GPU/MPS | No | Not used by this version; MacBook runs CPU code |
+| FFmpeg hardware encoder | Not configured | Video uses software `libx264` unless separately changed |
+
+Therefore, there is no honest fixed answer such as “GPU takes 2 seconds and MPS takes 1 second” for this repository. Timing depends on image dimensions, format, entropy, number of retries, CPU model, disk speed, and concurrent jobs. For a large image, decoding, resizing, NumPy evaluation, and JPEG encoding dominate.
+
+### Measure your own machine
+
+Use the following shell loop after starting the server. It records wall-clock request time and the service-reported processing time:
+
+```bash
+for image in ./samples/*.jpg ./samples/*.png; do
+  [ -f "$image" ] || continue
+  echo "--- $image"
+  /usr/bin/time -p curl -sS -X POST \
+    -F "file=@$image" \
+    http://127.0.0.1:8000/api/v1/compress/image
+  echo
+done
+```
+
+For a precise measurement, poll each returned job ID until `status` is `done`, then record `metrics.processing_time_seconds`, `original_size`, `compressed_size`, `ssim`, `psnr`, and `iterations`. Repeat each file at least three times and report the median. Run CPU, GPU, and MPS comparisons only after implementing separate accelerated backends; the current code cannot produce those comparisons.
+
+For large-file testing, create a safe test set and watch disk usage:
+
+```bash
+mkdir -p samples
+du -h samples/*
+du -sh .work
+df -h .
+```
+
+Remember that each active job temporarily needs space for the original upload and generated result. The default maximum upload is 500 MiB, but available disk space can be lower than that.
 
 ## Project structure
 
 ```text
 app/
-├── main.py                       # FastAPI application and static files
+├── main.py                       # FastAPI application, middleware, static files
 ├── deps.py                       # Shared dependency providers
-├── core/                         # Settings, security, logging, exceptions, algorithms
+├── core/                         # Settings, security, algorithms, logging, errors
 ├── router/                       # Top-level and versioned routers
 │   ├── v1/endpoints/             # Health, compression, jobs, upload, compare
-│   └── v2/                       # Reserved, inactive API version
+│   └── v2/                       # Reserved API version
 ├── models/v1/                    # Versioned request and response models
 ├── models/v2/                    # Reserved v2 model modules
 ├── services/                     # AI orchestration, jobs, storage, and cache
 └── utils/helpers.py              # Shared utility functions
 static/                           # Browser test bench
 scripts/run.py                    # Development entrypoint
+.work/                            # Local runtime files; do not commit
 ```
 
-The dependency direction is `router → services → core`. Core compression modules are callable without HTTP, job, or storage types. `AIService` owns feature extraction, prediction, encoding, quality evaluation, and the adjustment loop.
+The dependency direction is `router → services → core`. `AIService` owns feature extraction, parameter prediction, encoding, quality evaluation, and the adaptive adjustment loop.
 
 ## API versioning
 
-V1 is active. V2 has a wired but empty router and is excluded from OpenAPI until functionality is added. To add v2, create endpoint modules under `app/router/v2/endpoints`, register them in `app/router/v2/router.py`, and add matching models under `app/models/v2`.
+V1 is active. V2 is reserved and currently contains no active endpoints. New v2 functionality should be added under `app/router/v2/endpoints/` with matching models under `app/models/v2/`.
 
-## Checks
+## Validation and development checks
+
+Compile the application:
 
 ```bash
-UV_CACHE_DIR=/tmp/compressai-uv-cache uv run python -m compileall -q app
+uv run python -m compileall -q app
+```
+
+Check the browser JavaScript:
+
+```bash
 node --check static/js/app.js
+```
+
+Run tests:
+
+```bash
 uv run pytest
 ```
 
-### Development
+Format, lint, and type-check before submitting changes:
 
-Install the development tools with `uv sync --dev`. Run `uv run ruff format .`,
-`uv run ruff check .`, and `uv run mypy app/` before submitting changes.
-Install the repository hooks once with `uv run pre-commit install`.
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run mypy app/
+```
 
-The test suite includes an architecture regression test for the router → services → core boundary.
+Install repository hooks once:
 
-## Current limitations
+```bash
+uv run pre-commit install
+```
 
-- Jobs and cache are in memory; use Redis or a durable queue for multi-process deployments.
+## Current limitations and production considerations
+
+- Jobs and cache are in memory; restart or multiple workers can lose job state. Use a durable queue and shared store for production.
 - Uploaded files are stored locally; use object storage such as S3 for production.
-- Video availability is checked through FFmpeg, but the worker currently performs image compression.
-- Authentication is optional API-key protection; upgrade to JWT/OAuth when needed.
-- Rate limiting is configured but not yet enforced by middleware.
+- `.work` has no automatic cleanup worker yet.
+- API-key authentication is intentionally minimal; use a stronger identity system for public deployments.
+- `RATE_LIMIT_PER_MINUTE` is configured but rate-limit middleware is not currently enforced.
+- The image quality metric is a lightweight global SSIM approximation, not a full windowed SSIM implementation.
+- The current image path is CPU-only; CUDA/MPS acceleration would require a new backend.
+- Video quality metrics are placeholders and are not comparable to the image SSIM/PSNR values.
+
+## License
+
+See [LICENSE](LICENSE).

@@ -89,6 +89,11 @@ class RateLimitExceededError(AppError):
     error_code: ClassVar[str] = "rate_limit_exceeded"
 
 
+class UnauthorizedError(AppError):
+    status_code: ClassVar[int] = 401
+    error_code: ClassVar[str] = "unauthorized"
+
+
 class InvalidConfigurationError(AppError):
     status_code: ClassVar[int] = 500
     error_code: ClassVar[str] = "invalid_configuration"
