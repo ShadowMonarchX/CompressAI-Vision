@@ -1,18 +1,125 @@
-import asyncio, time, uuid
+import asyncio
+import time
+import uuid
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from app.config import settings
-from app.core.image_compressor import compress
 
-jobs: dict[str, dict] = {}
+from app.core.exceptions import InvalidJobStateTransitionError
+from app.services.ai_service import AIService
+from app.utils.helpers import format_size
 
-async def run_image(job_id: str, source: Path):
-    out = source.parent / "compressed.jpg"; jobs[job_id]["status"] = "processing"; started = time.perf_counter()
+
+class JobState(str, Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    DONE = "done"
+    FAILED = "failed"
+
+
+@dataclass
+class JobRecord:
+    job_id: str
+    source: Path
+    media_type: str = "image"
+    status: JobState = JobState.QUEUED
+    output: Path | None = None
+    metrics: dict | None = None
+    error: str | None = None
+    options: dict = field(default_factory=dict)
+
+    def transition(self, state: JobState) -> None:
+        allowed = {
+            JobState.QUEUED: {JobState.PROCESSING, JobState.FAILED},
+            JobState.PROCESSING: {JobState.DONE, JobState.FAILED},
+            JobState.DONE: set(),
+            JobState.FAILED: set(),
+        }
+        if state not in allowed[self.status]:
+            raise InvalidJobStateTransitionError(f"Invalid job transition {self.status}->{state}")
+        self.status = state
+
+
+class JobStore:
+    def __init__(self) -> None:
+        self._jobs = {}
+        self._lock = asyncio.Lock()
+
+    async def add(self, job: JobRecord) -> None:
+        async with self._lock:
+            self._jobs[job.job_id] = job
+
+    async def get(self, job_id: str) -> JobRecord | None:
+        async with self._lock:
+            return self._jobs.get(job_id)
+
+
+jobs = JobStore()
+
+
+async def run_image(job: JobRecord) -> None:
+    job.transition(JobState.PROCESSING)
+    started = time.perf_counter()
+    out = job.source.parent / "compressed.jpg"
     try:
-        score, params = await asyncio.to_thread(compress, source, out, settings.max_iterations, settings.ssim_threshold)
-        jobs[job_id].update(status="done", output=out, metrics={"original_size": source.stat().st_size, "compressed_size": out.stat().st_size,
-          "reduction_percent": round((1-out.stat().st_size/source.stat().st_size)*100, 2), **score,
-          "processing_time_seconds": round(time.perf_counter()-started, 4), "iterations": 1, "params_used": params})
-    except Exception as exc: jobs[job_id].update(status="failed", error=str(exc))
+        score, params, iterations = await AIService().compress_image(
+            job.source, out, **(job.options or {})
+        )
+        size = job.source.stat().st_size
+        out_size = out.stat().st_size
+        job.output = out
+        job.metrics = {
+            "original_size": size,
+            "compressed_size": out_size,
+            "original_size_human": format_size(size),
+            "compressed_size_human": format_size(out_size),
+            "reduction_percent": round((1 - out_size / size) * 100, 2),
+            **score,
+            "processing_time_seconds": round(time.perf_counter() - started, 4),
+            "iterations": iterations,
+            "params_used": params,
+        }
+        job.transition(JobState.DONE)
+    except Exception as exc:
+        job.error = str(exc)
+        job.transition(JobState.FAILED)
 
-def create_job(source: Path) -> str:
-    job_id = uuid.uuid4().hex; jobs[job_id] = {"status":"queued", "source":source}; asyncio.create_task(run_image(job_id, source)); return job_id
+
+async def run_video(job: JobRecord) -> None:
+    job.transition(JobState.PROCESSING)
+    started = time.perf_counter()
+    out = job.source.parent / "compressed.mp4"
+    try:
+        params = await AIService().compress_video(job.source, out, **(job.options or {}))
+        size, out_size = job.source.stat().st_size, out.stat().st_size
+        job.output = out
+        job.metrics = {
+            "original_size": size,
+            "compressed_size": out_size,
+            "original_size_human": format_size(size),
+            "compressed_size_human": format_size(out_size),
+            "reduction_percent": round((1 - out_size / size) * 100, 2),
+            "ssim": params["verified_ssim"],
+            "psnr": params["verified_psnr"],
+            "verified_ssim": params["verified_ssim"],
+            "verified_psnr": params["verified_psnr"],
+            "verification_duration_seconds": params["verification_duration_seconds"],
+            "quality_target": params["quality_target"],
+            "quality_target_met": params["quality_target_met"],
+            "processing_time_seconds": round(time.perf_counter() - started, 4),
+            "iterations": 1,
+            "params_used": params,
+        }
+        job.transition(JobState.DONE)
+    except Exception as exc:
+        job.error = str(exc)
+        job.transition(JobState.FAILED)
+
+
+async def create_job(
+    source: Path, media_type: str = "image", options: dict | None = None
+) -> str:
+    job = JobRecord(uuid.uuid4().hex, source, media_type=media_type, options=options or {})
+    await jobs.add(job)
+    asyncio.create_task(run_video(job) if media_type == "video" else run_image(job))
+    return job.job_id
