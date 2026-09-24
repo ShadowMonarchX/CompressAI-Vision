@@ -13,3 +13,6 @@ class UploadInit(BaseModel):
     filename: str; total_size: int = Field(gt=0); mimetype: str; chunk_size: int = Field(gt=0)
 
 class UploadCreated(BaseModel): upload_id: str; chunk_count: int
+class JobSubmission(BaseModel): job_id: str; status: str
+class Health(BaseModel): status: str; ffmpeg: bool; workers: int; chunk_size: int
+class AppConfig(BaseModel): max_file_size: int; small_file_threshold: int; chunk_size: int; ssim_threshold: float

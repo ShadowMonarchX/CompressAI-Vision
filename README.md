@@ -13,6 +13,10 @@ uv run uvicorn app.main:app --reload
 
 Open `/docs`. A small upload is submitted with `curl -F file=@photo.png http://localhost:8000/api/v1/compress/image`; poll the returned job and download its result. The chunk flow is `upload/init` → repeated `upload/chunk/{id}/{index}` → `upload/complete/{id}` → `jobs/{job_id}`. `upload/status/{id}` makes interrupted uploads resumable.
 
+### API versioning
+
+To add v2, copy `app/api/v1/` to `app/api/v2/`, change its aggregator prefix to `/api/v2`, adapt only the v2 routers, and add one `app.include_router(v2_router)` line in `app/main.py`. V1 files and their dependencies remain untouched; routers receive services through `Depends`, so versions do not share mutable route state.
+
 ## Design
 
 Uploads are preallocated and written at offsets, so the full input is never held in memory. Each job has an isolated working directory. Pillow and NumPy provide codec access and lightweight entropy/gradient features; the predictor is a replaceable `Predictor` protocol. Quality uses manually implemented PSNR and SSIM-like luminance/variance scoring. CPU work runs in `asyncio.to_thread` and can be moved behind the job service interface. FFmpeg is a system dependency (industry-standard codec engine); the video route is intentionally an explicit 501 until that worker is enabled, avoiding a false claim of video support.

@@ -90,3 +90,10 @@ There are no additional files, hidden duplicate assets, nested build outputs, or
 3. Make comparison requests carry the current job/file identity and implement/verify the backend endpoint.
 4. Harden resumable-upload identity and API URL validation.
 5. Add browser tests for initialization, image/video switching, upload failure/retry, result rendering, and comparison rendering; add chart resize coverage.
+# API restructuring pass (2026-09-24)
+
+The API entrypoint now contains application setup, middleware/static mounting, the shared domain exception handler, and one versioned-router include; route handlers moved into `app/api/v1/routers/`. Compression, job, and system routes use explicit response models and status codes, and upload persistence begins behind `app/services/storage.py`. `app/services/__init__.py` was added. `main.py` contains zero `@app.` route decorators (verified with ripgrep).
+
+Endpoint mapping preserved: `POST /api/v1/compress/image` → same; `POST /api/v1/compress/video` → same; `GET /api/v1/jobs/{id}` → same; `GET /api/v1/jobs/{id}/download` → same; `GET /api/v1/health` → same; `GET /api/v1/config` → same. The upload router namespace is present, but its former resumable handlers still require migration into the storage service before this restructuring is complete.
+
+Verification: `python -m compileall -q app` passes. Runtime import and pytest could not run because `fastapi` is unavailable in the environment; `uv` could not initialize its cache due to permissions. The checked-out workspace also has no `static/` directory, so static mounting is guarded until those assets are restored.
