@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8"><title>CompressAI Vision demo</title>
+<h1>CompressAI Vision</h1>
+<input id="file" type="file"><button id="go">Compress</button><progress id="p" max="1" value="0"></progress>
+<pre id="out"></pre>
+<script>
+const out=document.querySelector('#out'), p=document.querySelector('#p');
+go.onclick=async()=>{const f=file.files[0]; if(!f)return; const d=new FormData(); d.append('file',f); const r=await fetch('/api/v1/compress/image',{method:'POST',body:d}); const j=await r.json();
+ if(!r.ok){out.textContent=JSON.stringify(j,null,2);return} out.textContent='Queued '+j.job_id;
+ let s; do { await new Promise(x=>setTimeout(x,500)); s=await (await fetch('/api/v1/jobs/'+j.job_id)).json(); out.textContent=JSON.stringify(s,null,2); } while(s.status==='queued'||s.status==='processing');
+ if(s.status==='done') out.innerHTML+=`\n<a href="${s.download_url}">Download compressed file</a>`;
+};
+</script>
