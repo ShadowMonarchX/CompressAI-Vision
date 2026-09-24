@@ -23,6 +23,13 @@ class Metrics(APIModel):
     processing_time_seconds: float = Field(ge=0)
     iterations: int = Field(ge=1)
     params_used: dict[str, Any] = Field(default_factory=dict)
+    # Video-only verification fields. They are optional so existing image
+    # responses remain backwards compatible.
+    verified_ssim: float | None = Field(default=None, ge=0, le=1)
+    verified_psnr: float | None = Field(default=None, ge=0)
+    verification_duration_seconds: float | None = Field(default=None, ge=0)
+    quality_target: int | None = Field(default=None, ge=1, le=100)
+    quality_target_met: bool | None = None
 
 
 class Job(APIModel):

@@ -164,6 +164,8 @@ Important settings:
 | `MAX_WORKERS` | unset | Reported worker count; defaults to 1 in the health response |
 | `FFMPEG_BINARY` | `ffmpeg` | FFmpeg executable name or absolute path |
 | `FFMPEG_TIMEOUT` | `300` | Video compression timeout in seconds |
+| `VIDEO_ENCODE_PRESET` | `fast` | FFmpeg preset; faster encoding with a modest size increase versus `medium` |
+| `VIDEO_ENCODER` | `libx264` | Video codec; portable H.264 software encoding default |
 | `API_KEY` | unset | Enables API-key protection when set |
 
 The quality target is selected per request instead of being stored in `.env`. Image requests accept `ssim_threshold` from `0.0` to `1.0`; the default is `0.90`. Video requests accept FFmpeg `crf` from `0` to `51`; the default is `28`. Lower CRF generally preserves more video quality and creates a larger file.
@@ -296,7 +298,7 @@ curl -sS -X POST \
   http://127.0.0.1:8000/api/v1/compress/video
 ```
 
-The video path uses FFmpeg with `libx264`, medium preset, the requested CRF, and AAC audio. It does not use the Pillow image-quality loop, so video jobs report `ssim: 0.0`, `psnr: 0.0`, and one iteration. The endpoint returns `503` if FFmpeg is not available.
+The video path uses FFmpeg with the configured encoder and preset (defaults to portable H.264 with `fast`), the CRF mapped from `quality_target`, and AAC audio. The faster preset favors throughput over compression efficiency and may produce a somewhat larger file than `medium`. Video uses Path A: one full encode followed by one full-stream FFmpeg SSIM/PSNR verification pass (no iterative re-encoding). Metrics include `verified_ssim`, `verified_psnr`, `verification_duration_seconds`, `quality_target`, and `quality_target_met`; the latter is an honest report and does not claim that the static mapping was guaranteed to meet the threshold. Structured logs report both stages. The endpoint returns `503` if FFmpeg is not available.
 
 ### Health and configuration
 

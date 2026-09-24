@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     max_workers: int | None = None
     ffmpeg_binary: str = "ffmpeg"
     ffmpeg_timeout: int = 300
+    video_encode_preset: str = "fast"
+    video_encoder: str = "libx264"
     api_key: str | None = None
 
 settings = Settings()
