@@ -28,5 +28,4 @@ async def config(settings=Depends(get_settings)) -> AppConfig:
         max_file_size=settings.max_file_size,
         small_file_threshold=settings.small_file_threshold,
         chunk_size=settings.chunk_size,
-        ssim_threshold=settings.ssim_threshold,
     )

@@ -1,7 +1,7 @@
 import asyncio
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
@@ -26,6 +26,7 @@ class JobRecord:
     output: Path | None = None
     metrics: dict | None = None
     error: str | None = None
+    options: dict = field(default_factory=dict)
 
     def transition(self, state: JobState) -> None:
         allowed = {
@@ -61,7 +62,9 @@ async def run_image(job: JobRecord) -> None:
     started = time.perf_counter()
     out = job.source.parent / "compressed.jpg"
     try:
-        score, params, iterations = await AIService().compress_image(job.source, out)
+        score, params, iterations = await AIService().compress_image(
+            job.source, out, **(job.options or {})
+        )
         size = job.source.stat().st_size
         out_size = out.stat().st_size
         job.output = out
@@ -87,7 +90,7 @@ async def run_video(job: JobRecord) -> None:
     started = time.perf_counter()
     out = job.source.parent / "compressed.mp4"
     try:
-        params = await AIService().compress_video(job.source, out)
+        params = await AIService().compress_video(job.source, out, **(job.options or {}))
         size, out_size = job.source.stat().st_size, out.stat().st_size
         job.output = out
         job.metrics = {
@@ -108,8 +111,10 @@ async def run_video(job: JobRecord) -> None:
         job.transition(JobState.FAILED)
 
 
-async def create_job(source: Path, media_type: str = "image") -> str:
-    job = JobRecord(uuid.uuid4().hex, source, media_type=media_type)
+async def create_job(
+    source: Path, media_type: str = "image", options: dict | None = None
+) -> str:
+    job = JobRecord(uuid.uuid4().hex, source, media_type=media_type, options=options or {})
     await jobs.add(job)
     asyncio.create_task(run_video(job) if media_type == "video" else run_image(job))
     return job.job_id

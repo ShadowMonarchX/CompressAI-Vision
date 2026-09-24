@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile
 
 from app.core.config import settings
 from app.models.v1.response import Comparison
@@ -32,14 +32,17 @@ def _metrics(source: Path, output: Path, result: tuple, elapsed: float) -> dict:
 
 
 @router.post("/image", response_model=Comparison)
-async def compare_image(file: UploadFile = File(...)):
+async def compare_image(
+    file: UploadFile = File(...),
+    ssim_threshold: float = Form(0.90, ge=0.0, le=1.0),
+):
     """Compare adaptive and fixed-quality JPEG outputs for one image."""
     source = await save_upload(file, settings)
     with TemporaryDirectory(dir=settings.work_dir) as directory:
         root = Path(directory)
         started = time.perf_counter()
         ai_result, baseline_result = await AIService().compare_image(
-            source, root / "ai.jpg", root / "baseline.jpg"
+            source, root / "ai.jpg", root / "baseline.jpg", ssim_threshold
         )
         elapsed = time.perf_counter() - started
         return {

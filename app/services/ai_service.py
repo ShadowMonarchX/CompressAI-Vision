@@ -23,7 +23,8 @@ class AIService:
         self.compressor = ImageCompressor()
         self.evaluator = QualityEvaluator()
 
-    async def compress_image(self, source, output):
+    async def compress_image(self, source, output, ssim_threshold: float = 0.90) -> tuple:
+        evaluator = QualityEvaluator(ssim_threshold=ssim_threshold)
         try:
             params = self.predictor.predict(self.extractor.extract(source))
         except Exception as exc:
@@ -34,21 +35,21 @@ class AIService:
         for iteration in range(1, settings.max_iterations + 1):
             try:
                 await self.compressor.compress(source, output, quality)
-                score = self.evaluator.evaluate(source, output)
+                score = evaluator.evaluate(source, output)
             except Exception as exc:
                 raise CompressionFailedError(
                     "Compression or quality evaluation failed", stage="compression"
                 ) from exc
-            if score["ssim"] >= self.evaluator.ssim_threshold or quality >= 98:
+            if score["ssim"] >= evaluator.ssim_threshold or quality >= 98:
                 break
             quality = min(98, quality + 8)
-        if score["ssim"] < self.evaluator.ssim_threshold and quality >= 98:
+        if score["ssim"] < evaluator.ssim_threshold and quality >= 98:
             raise QualityThresholdUnreachableError("Quality threshold could not be reached", best_score=score)
 
         return score, {"codec": params.codec, "quality": quality, "reason": params.reason}, iteration
 
-    async def compare_image(self, source, ai_output, baseline_output):
-        ai_result = await self.compress_image(source, ai_output)
+    async def compare_image(self, source, ai_output, baseline_output, ssim_threshold: float = 0.90):
+        ai_result = await self.compress_image(source, ai_output, ssim_threshold)
         await self.compressor.compress(source, baseline_output, 75)
         baseline_score = self.evaluator.evaluate(source, baseline_output)
         return ai_result, (
@@ -57,7 +58,7 @@ class AIService:
             1,
         )
 
-    async def compress_video(self, source, output):
+    async def compress_video(self, source, output, crf: int = 28):
         """Transcode video with FFmpeg without sending it through Pillow."""
         if not shutil.which(settings.ffmpeg_binary):
             raise FFmpegNotAvailableError("ffmpeg is unavailable")
@@ -72,7 +73,7 @@ class AIService:
             "-preset",
             "medium",
             "-crf",
-            "28",
+            str(crf),
             "-c:a",
             "aac",
             str(output),
@@ -86,7 +87,7 @@ class AIService:
         if process.returncode != 0:
             detail = stderr.decode(errors="replace").strip().splitlines()[-1:]
             raise CompressionFailedError("FFmpeg compression failed", stderr_tail=" ".join(detail))
-        return {"codec": "libx264", "quality": 28, "reason": "FFmpeg video transcode"}
+        return {"codec": "libx264", "crf": crf, "reason": "FFmpeg video transcode"}
 
 class _FixedPredictor:
     def predict(self, features: ImageFeatures) -> CompressionParams:

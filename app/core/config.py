@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     small_file_threshold: int = 20 * 1024 * 1024
     chunk_size: int = 5 * 1024 * 1024
     max_iterations: int = 3
-    ssim_threshold: float = 0.90
     rate_limit_per_minute: int = 30
     max_workers: int | None = None
     ffmpeg_binary: str = "ffmpeg"

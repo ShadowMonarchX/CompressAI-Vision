@@ -144,7 +144,6 @@ MAX_FILE_SIZE=524288000
 SMALL_FILE_THRESHOLD=20971520
 CHUNK_SIZE=5242880
 MAX_ITERATIONS=3
-SSIM_THRESHOLD=0.90
 RATE_LIMIT_PER_MINUTE=30
 MAX_WORKERS=1
 FFMPEG_BINARY=ffmpeg
@@ -162,11 +161,12 @@ Important settings:
 | `SMALL_FILE_THRESHOLD` | `20971520` | Configured small-file threshold: 20 MiB |
 | `CHUNK_SIZE` | `5242880` | Configured application chunk size: 5 MiB |
 | `MAX_ITERATIONS` | `3` | Maximum adaptive image-compression attempts |
-| `SSIM_THRESHOLD` | `0.90` | Target approximate SSIM for adaptive image compression |
 | `MAX_WORKERS` | unset | Reported worker count; defaults to 1 in the health response |
 | `FFMPEG_BINARY` | `ffmpeg` | FFmpeg executable name or absolute path |
 | `FFMPEG_TIMEOUT` | `300` | Video compression timeout in seconds |
 | `API_KEY` | unset | Enables API-key protection when set |
+
+The quality target is selected per request instead of being stored in `.env`. Image requests accept `ssim_threshold` from `0.0` to `1.0`; the default is `0.90`. Video requests accept FFmpeg `crf` from `0` to `51`; the default is `28`. Lower CRF generally preserves more video quality and creates a larger file.
 
 If `CREATE_WORK_DIR=false`, create the directory yourself before starting the server:
 
@@ -226,6 +226,7 @@ Submit an image:
 ```bash
 curl -sS -X POST \
   -F "file=@./photo.png" \
+  -F "ssim_threshold=0.90" \
   http://127.0.0.1:8000/api/v1/compress/image
 ```
 
@@ -280,6 +281,7 @@ curl -L -o compressed.jpg \
 ```bash
 curl -sS -X POST \
   -F "file=@./photo.png" \
+  -F "ssim_threshold=0.85" \
   http://127.0.0.1:8000/api/v1/compare/image
 ```
 
@@ -290,10 +292,11 @@ This endpoint returns `ai` and `baseline` metrics. The baseline is a single JPEG
 ```bash
 curl -sS -X POST \
   -F "file=@./input.mp4" \
+  -F "crf=28" \
   http://127.0.0.1:8000/api/v1/compress/video
 ```
 
-The video path uses FFmpeg with `libx264`, medium preset, CRF 28, and AAC audio. It does not use the Pillow image-quality loop, so video jobs report `ssim: 0.0`, `psnr: 0.0`, and one iteration. The endpoint returns `503` if FFmpeg is not available.
+The video path uses FFmpeg with `libx264`, medium preset, the requested CRF, and AAC audio. It does not use the Pillow image-quality loop, so video jobs report `ssim: 0.0`, `psnr: 0.0`, and one iteration. The endpoint returns `503` if FFmpeg is not available.
 
 ### Health and configuration
 
@@ -362,7 +365,7 @@ Example image metrics:
 | Final JPEG quality | 76 |
 | Processing time | 2.184 seconds |
 
-For this example, the quality target was reached on the second attempt. A different image may require one, two, or three attempts depending on its detail and the `SSIM_THRESHOLD` setting.
+For this example, the quality target was reached on the second attempt. A different image may require one, two, or three attempts depending on its detail and the request's `ssim_threshold` value.
 
 #### Example video job
 

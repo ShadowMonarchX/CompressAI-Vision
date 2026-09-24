@@ -49,7 +49,6 @@ class AppConfig(APIModel):
     max_file_size: int = Field(gt=0)
     small_file_threshold: int = Field(gt=0)
     chunk_size: int = Field(gt=0)
-    ssim_threshold: float = Field(ge=0, le=1)
 
 
 class UploadCreated(APIModel):
