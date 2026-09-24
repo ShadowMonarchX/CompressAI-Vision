@@ -10,7 +10,8 @@ import asyncio
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
+from app.core.exceptions import CompressionFailedError
 
 
 class BaseCompressor(ABC):
@@ -67,6 +68,10 @@ class ImageCompressor(BaseCompressor):
                 raise OSError("JPEG encoder produced an empty output")
             temporary.replace(output)
             return output
+        except UnidentifiedImageError as exc:
+            raise CompressionFailedError("Input is not a valid image", stage="image_decode") from exc
+        except OSError as exc:
+            raise CompressionFailedError("Image encoding failed", stage="image_save") from exc
         finally:
             # Cleanup is safe after replace (the temporary path no longer
             # exists) and also covers failures during image decoding or save.

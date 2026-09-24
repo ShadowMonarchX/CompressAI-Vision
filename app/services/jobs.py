@@ -4,6 +4,7 @@ from enum import Enum
 from pathlib import Path
 from app.core.config import settings
 from app.services.ai_service import AIService
+from app.core.exceptions import InvalidJobStateTransitionError
 from app.utils.helpers import format_size
 
 class JobState(str, Enum): QUEUED="queued"; PROCESSING="processing"; DONE="done"; FAILED="failed"
@@ -12,7 +13,8 @@ class JobRecord:
     job_id: str; source: Path; media_type: str = "image"; status: JobState = JobState.QUEUED; output: Path|None = None; metrics: dict|None = None; error: str|None = None
     def transition(self, state):
         allowed={JobState.QUEUED:{JobState.PROCESSING,JobState.FAILED},JobState.PROCESSING:{JobState.DONE,JobState.FAILED},JobState.DONE:set(),JobState.FAILED:set()}
-        if state not in allowed[self.status]: raise ValueError(f"invalid transition {self.status}->{state}")
+        if state not in allowed[self.status]:
+            raise InvalidJobStateTransitionError(f"Invalid job transition {self.status}->{state}")
         self.status=state
 class JobStore:
     def __init__(self): self._jobs={}; self._lock=asyncio.Lock()

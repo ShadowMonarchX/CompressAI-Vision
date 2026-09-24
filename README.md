@@ -104,6 +104,12 @@ node --check static/js/app.js
 uv run pytest
 ```
 
+### Development
+
+Install the development tools with `uv sync --dev`. Run `uv run ruff format .`,
+`uv run ruff check .`, and `uv run mypy app/` before submitting changes.
+Install the repository hooks once with `uv run pre-commit install`.
+
 The test suite includes an architecture regression test for the router → services → core boundary.
 
 ## Current limitations

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from app.deps import get_job_store
-from app.core.exceptions import JobNotFoundError
+from app.core.exceptions import JobNotFoundError, JobNotDoneError
 from app.models.v1.response import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -23,5 +23,6 @@ async def download(job_id: str, store=Depends(get_job_store)) -> FileResponse:
     """Stream only a completed job's server-owned output path."""
     j=await store.get(job_id)
     if not j or j.status.value != "done" or j.output is None:
-        raise JobNotFoundError("Result not ready")
+        if not j: raise JobNotFoundError("Job not found")
+        raise JobNotDoneError("Job result is not ready")
     return FileResponse(j.output,filename=j.output.name)

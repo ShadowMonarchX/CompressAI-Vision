@@ -8,7 +8,7 @@ returns a filesystem path so the AI services remain independent of FastAPI's
 import uuid
 from pathlib import Path
 
-from app.core.exceptions import FileTooLargeError, MediaTypeError, ServiceUnavailableError
+from app.core.exceptions import FileTooLargeError, UnsupportedMediaTypeError, ServiceUnavailableError, StorageError
 
 ALLOWED = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/quicktime"}
 CHUNK_SIZE = 1024 * 1024
@@ -17,7 +17,7 @@ CHUNK_SIZE = 1024 * 1024
 async def save_upload(file, settings) -> Path:
     """Validate and stream an upload into an isolated job directory."""
     if file.content_type not in ALLOWED:
-        raise MediaTypeError("Unsupported media type")
+        raise UnsupportedMediaTypeError("Unsupported media type")
     if not settings.work_dir.is_dir():
         raise ServiceUnavailableError(
             f"Work directory is unavailable: {settings.work_dir}. "
@@ -37,8 +37,12 @@ async def save_upload(file, settings) -> Path:
                     raise FileTooLargeError("File exceeds MAX_FILE_SIZE")
                 output.write(chunk)
         return destination
-    except Exception:
+    except FileTooLargeError:
         # Do not leave a partial upload that could be mistaken for a valid job.
         destination.unlink(missing_ok=True)
         folder.rmdir()
         raise
+    except OSError as exc:
+        destination.unlink(missing_ok=True)
+        folder.rmdir()
+        raise StorageError("Unable to persist upload") from exc

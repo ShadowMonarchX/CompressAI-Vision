@@ -1,6 +1,11 @@
 from typing import Any, Literal
 from pydantic import Field
 from .request import APIModel
+class ErrorResponse(APIModel):
+    error_code: str
+    message: str
+    detail: dict | None = None
+    request_id: str | None = None
 
 class Metrics(APIModel):
     original_size: int = Field(ge=0); compressed_size: int = Field(ge=0)
