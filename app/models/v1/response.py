@@ -4,6 +4,8 @@ from .request import APIModel
 
 class Metrics(APIModel):
     original_size: int = Field(ge=0); compressed_size: int = Field(ge=0)
+    original_size_human: str | None = None
+    compressed_size_human: str | None = None
     reduction_percent: float = Field(ge=-100, le=100); ssim: float = Field(ge=0, le=1)
     psnr: float = Field(ge=0); processing_time_seconds: float = Field(ge=0)
     iterations: int = Field(ge=1); params_used: dict[str, Any] = Field(default_factory=dict)

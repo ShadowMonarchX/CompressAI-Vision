@@ -1,3 +1,4 @@
+import asyncio
 from app.core.image_compressor import ImageCompressor
 from app.core.config import settings
 from app.core.feature_extraction import ImageFeatureExtractor, ImageFeatures
@@ -26,6 +27,20 @@ class AIService:
         await self.compressor.compress(source, baseline_output, 75)
         baseline_score = self.evaluator.evaluate(source, baseline_output)
         return ai_result, (baseline_score, {'codec': 'JPEG', 'quality': 75, 'reason': 'fixed comparison baseline'}, 1)
+
+    async def compress_video(self, source, output):
+        """Transcode video with FFmpeg without sending it through Pillow."""
+        output.parent.mkdir(parents=True, exist_ok=True)
+        process = await asyncio.create_subprocess_exec(
+            settings.ffmpeg_binary, '-y', '-i', str(source), '-c:v', 'libx264',
+            '-preset', 'medium', '-crf', '28', '-c:a', 'aac', str(output),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=settings.ffmpeg_timeout)
+        if process.returncode != 0:
+            detail = stderr.decode(errors='replace').strip().splitlines()[-1:]
+            raise RuntimeError(f"FFmpeg failed: {' '.join(detail)}")
+        return {'codec': 'libx264', 'quality': 28, 'reason': 'FFmpeg video transcode'}
 
 class _FixedPredictor:
     def predict(self, features: ImageFeatures) -> CompressionParams:

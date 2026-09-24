@@ -1,46 +1,47 @@
 # CompressAI Vision
 
-Async FastAPI service and responsive browser test bench for intelligent image/video compression.
+CompressAI Vision is an asynchronous FastAPI service and browser test bench for image compression. It analyzes image features, predicts encoding parameters, evaluates quality, and adjusts compression until the configured quality target is reached.
+
+## Requirements
+
+- Python 3.11+
+- [`uv`](https://docs.astral.sh/uv/)
+- FFmpeg for the video endpoint and health check
+
+Install FFmpeg on macOS with `brew install ffmpeg`, then verify it with `ffmpeg -version`.
 
 ## Run locally
-
-Requirements: Python 3.11+, `uv`, and `ffmpeg`.
 
 ```bash
 uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-Open the UI at http://localhost:8000/static/test.html or API docs at http://localhost:8000/docs.
+Or use the development entrypoint:
+
+```bash
+uv run python scripts/run.py
+```
+
+Open <http://localhost:8000/static/test.html> for the browser test bench or <http://localhost:8000/docs> for API documentation.
 
 ## Browser UI
 
-```text
-static/
-├── test.html
-├── css/test.css
-└── js/app.js
-```
+The static UI supports image/video selection, drag-and-drop uploads, previews, API/FFmpeg status, job polling, and downloads. Completed image jobs display the before-compression size, after-compression size, and percentage of size reduced. It uses plain HTML, CSS, and JavaScript with no frontend build step.
 
-The UI provides image/video tabs, drag-and-drop selection, previews, API and FFmpeg status, compression progress, job polling, reduction results, and downloads. It uses the same-origin API and needs no frontend build step.
+## API
 
-## API reference
-
-All endpoints use the `/api/v1` prefix and appear grouped in `/docs`.
+All active endpoints use the `/api/v1` prefix.
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/api/v1/compress/image` | Queue image compression; multipart field: `file` |
-| POST | `/api/v1/compress/video` | Check FFmpeg and queue video job |
-| POST | `/api/v1/upload/init` | Begin resumable upload |
-| POST | `/api/v1/upload/chunk/{upload_id}/{chunk_index}` | Send one chunk |
-| POST | `/api/v1/upload/complete/{upload_id}` | Complete upload |
-| GET | `/api/v1/upload/status/{upload_id}` | Read received chunks |
-| GET | `/api/v1/jobs/{job_id}` | Read job status and metrics |
-| GET | `/api/v1/jobs/{job_id}/download` | Download completed result |
-| GET | `/api/v1/health` | Read service readiness |
-| GET | `/api/v1/config` | Read UI limits |
+| POST | `/api/v1/compress/video` | Check FFmpeg and queue a video job |
 | POST | `/api/v1/compare/image` | Compare adaptive compression with a fixed-quality baseline |
+| GET | `/api/v1/jobs/{job_id}` | Read job status and compression metrics |
+| GET | `/api/v1/jobs/{job_id}/download` | Download a completed result |
+| GET | `/api/v1/health` | Read API, FFmpeg, worker, and chunk status |
+| GET | `/api/v1/config` | Read client-safe size and quality limits |
 
 Example:
 
@@ -50,38 +51,65 @@ curl http://localhost:8000/api/v1/jobs/<job_id>
 curl -o compressed.jpg http://localhost:8000/api/v1/jobs/<job_id>/download
 ```
 
-Submission returns `202` and `{"job_id":"...","status":"queued"}`.
+Submission returns `202` with `{"job_id":"...","status":"queued"}`. If FFmpeg is unavailable, the video endpoint returns `503 Service Unavailable`. The current background worker is image-oriented; full video transcoding is planned work.
+
+## Configuration
+
+Copy `.env.example` to `.env`:
+
+```env
+WORK_DIR=.work
+CREATE_WORK_DIR=true
+MAX_FILE_SIZE=524288000
+CHUNK_SIZE=5242880
+SSIM_THRESHOLD=0.90
+MAX_ITERATIONS=3
+RATE_LIMIT_PER_MINUTE=30
+FFMPEG_BINARY=ffmpeg
+```
+
+`API_KEY` is optional. When set, requests must include an `X-API-Key` header. This is a minimal starting point; JWT/OAuth is the future upgrade path.
+
+Set `CREATE_WORK_DIR=false` to prevent startup from creating the configured work directory. Upload and compression operations require that directory to exist, so leave it set to `true` for normal local use.
 
 ## Project structure
 
 ```text
 app/
-├── main.py                 # FastAPI setup, errors, static mount
-├── deps.py                 # injectable dependencies
-├── router/                 # top-level, versioned routers (v1 active, v2 reserved)
-├── core/                   # settings, logging, security, and compression algorithms
-├── models/v1/               # split request and response Pydantic models
-└── services/                # AI orchestration, jobs, storage, and cache boundaries
+├── main.py                       # FastAPI application and static files
+├── deps.py                       # Shared dependency providers
+├── core/                         # Settings, security, logging, exceptions, algorithms
+├── router/                       # Top-level and versioned routers
+│   ├── v1/endpoints/             # Health, compression, jobs, upload, compare
+│   └── v2/                       # Reserved, inactive API version
+├── models/v1/                    # Versioned request and response models
+├── models/v2/                    # Reserved v2 model modules
+├── services/                     # AI orchestration, jobs, storage, and cache
+└── utils/helpers.py              # Shared utility functions
+static/                           # Browser test bench
+scripts/run.py                    # Development entrypoint
 ```
 
-To add v2, add endpoint modules under `app/router/v2/endpoints`, include them from `app/router/v2/router.py`, and add versioned models under `app/models/v2`. The reserved v2 router is currently excluded from OpenAPI and has no routes.
+The dependency direction is `router → services → core`. Core compression modules are callable without HTTP, job, or storage types. `AIService` owns feature extraction, prediction, encoding, quality evaluation, and the adjustment loop.
 
-Compression algorithms remain in `core/` (including the deliberate extension `exceptions.py`); `services/ai_service.py` owns orchestration and business rules. This keeps model logic separate from external integration. Authentication starts with an optional API-key header (`API_KEY`), with JWT/OAuth as the future upgrade path. `services/cache_service.py` provides a TTL in-memory cache, designed to be replaced by Redis when persistence or multi-process sharing is needed.
+## API versioning
 
-## Configuration
-
-Settings come from environment variables or `.env`: `WORK_DIR` defaults to `.work`, `MAX_FILE_SIZE` to 524288000 bytes, `CHUNK_SIZE` to 5242880 bytes, `MAX_ITERATIONS` to 3, `SSIM_THRESHOLD` to 0.90, and `FFMPEG_BINARY` to `ffmpeg`.
+V1 is active. V2 has a wired but empty router and is excluded from OpenAPI until functionality is added. To add v2, create endpoint modules under `app/router/v2/endpoints`, register them in `app/router/v2/router.py`, and add matching models under `app/models/v2`.
 
 ## Checks
 
 ```bash
-python -m compileall -q app
+UV_CACHE_DIR=/tmp/compressai-uv-cache uv run python -m compileall -q app
 node --check static/js/app.js
 uv run pytest
 ```
 
-Compression runs away from the request path with `asyncio.to_thread`; job state uses an async lock. For production, replace in-memory jobs and local files with Redis/Postgres and S3-compatible storage.
+The test suite includes an architecture regression test for the router → services → core boundary.
 
-## Known limitations
+## Current limitations
 
-This is a local test bench. Video readiness is checked through FFmpeg, while the current worker is primarily image-oriented. The upload namespace is prepared for resumable storage integration. Authentication, rate limiting, durable queues, and browser automation tests are not included.
+- Jobs and cache are in memory; use Redis or a durable queue for multi-process deployments.
+- Uploaded files are stored locally; use object storage such as S3 for production.
+- Video availability is checked through FFmpeg, but the worker currently performs image compression.
+- Authentication is optional API-key protection; upgrade to JWT/OAuth when needed.
+- Rate limiting is configured but not yet enforced by middleware.
