@@ -1,10 +1,377 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CompressAI Vision test bench</title><link rel="stylesheet" href="/static/css/test.css"></head><body>
-<main><header><div><p class="eyebrow">CompressAI Vision</p><h1>Compression test bench</h1><p class="muted">See what the AI-assisted pipeline does to your media.</p></div><label class="api">API <input id="api" placeholder="same origin"></label></header>
-<nav class="tabs"><button class="active" data-mode="image">Image</button><button data-mode="video">Video</button></nav>
-<section id="imagePanel" class="card uploadPanel"><div id="imageDrop" class="drop"><strong>Drop an image here</strong><span>or choose a file to begin</span><input id="imagePicker" type="file" accept="image/*"><button id="imageChoose">Choose image</button></div></section>
-<section id="videoPanel" class="card uploadPanel hidden"><div id="videoDrop" class="drop"><strong>Drop a video here</strong><span>or choose a file to begin</span><input id="videoPicker" type="file" accept="video/*"><button id="videoChoose">Choose video</button></div></section>
-<p id="error" class="error" role="alert"></p><section class="card"><div id="progressWrap" class="progress hidden"><div><span id="progressLabel">Uploading</span><span id="progressPct">0%</span></div><progress id="progress" max="100" value="0"></progress></div></section>
-<section id="beforeSection" class="card hidden"><div class="sectionTitle"><h2>Before</h2><span id="beforeMeta" class="muted"></span></div><div id="before" class="media"></div><div id="beforeInfo" class="info"></div></section>
-<section id="statusSection" class="card hidden"><div class="stepper"><span data-step="queued">1&nbsp; Queued</span><i></i><span data-step="processing">2&nbsp; Processing</span><i></i><span data-step="done">3&nbsp; Done</span></div><p id="statusText">Waiting…</p><p>Elapsed: <strong id="elapsed">0.0s</strong></p><button id="retry" class="secondary hidden">Try again</button></section>
-<section id="afterSection" class="card hidden"><div class="sectionTitle"><h2>Before vs after</h2><div id="badge" class="badge"></div></div><div class="compare"><div><h3>Before</h3><div id="afterBefore" class="media"></div></div><div><h3>After</h3><div id="after" class="media"></div></div></div><div id="stats" class="stats"></div><a id="download" class="button" download>Download compressed file</a><div class="charts"><div><h3>Size comparison</h3><canvas id="sizeChart"></canvas></div><div><h3>Quality scores</h3><canvas id="qualityChart"></canvas></div></div></section>
-<section class="card"><div class="sectionTitle"><h2>AI vs baseline</h2><button id="compareBtn" class="secondary" disabled>Run comparison</button></div><p id="compareSummary" class="muted">Compress a file first to enable comparison.</p><p id="compareError" class="error" role="alert"></p><div id="compareTable"></div><canvas id="compareChart"></canvas></section><footer>Same-origin API: <span id="apiFooter"></span></footer></main><script type="module" src="/static/js/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+
+    <title>CompressAI Vision Test Bench</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/static/css/test.css" />
+  </head>
+
+  <body>
+    <main>
+      <!-- Header -->
+      <header>
+        <div class="heroCopy">
+          <p class="eyebrow">
+            <span class="eyebrowDot" aria-hidden="true"></span>
+            CompressAI Vision · Lab
+          </p>
+
+          <h1>Compression Test Bench</h1>
+
+          <p class="muted">
+            Turn heavy media into lighter files — without losing the details
+            that matter.
+          </p>
+        </div>
+
+        <label class="api" for="api">
+          API endpoint
+          <input
+            id="api"
+            name="api"
+            type="text"
+            placeholder="same origin"
+            autocomplete="url"
+            aria-label="API endpoint"
+          />
+        </label>
+      </header>
+
+      <!-- Media Type Tabs -->
+      <nav class="tabs" aria-label="Media type">
+        <button
+          type="button"
+          class="active"
+          data-mode="image"
+          aria-selected="true"
+        >
+          Image
+        </button>
+
+        <button
+          type="button"
+          data-mode="video"
+          aria-selected="false"
+        >
+          Video
+        </button>
+      </nav>
+
+      <!-- Image Upload -->
+      <section
+        id="imagePanel"
+        class="card uploadPanel"
+        aria-labelledby="imageUploadTitle"
+      >
+        <div id="imageDrop" class="drop">
+          <div class="dropIcon" aria-hidden="true">✦</div>
+
+          <strong id="imageUploadTitle">Drop an image here</strong>
+
+          <span>
+            PNG, JPG, WEBP or GIF · up to your configured limit
+          </span>
+
+          <input
+            id="imagePicker"
+            name="image"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+          />
+
+          <button
+            id="imageChoose"
+            type="button"
+          >
+            Choose image
+          </button>
+        </div>
+      </section>
+
+      <!-- Video Upload -->
+      <section
+        id="videoPanel"
+        class="card uploadPanel"
+        aria-labelledby="videoUploadTitle"
+        hidden
+      >
+        <div id="videoDrop" class="drop">
+          <div class="dropIcon" aria-hidden="true">▶</div>
+
+          <strong id="videoUploadTitle">Drop a video here</strong>
+
+          <span>
+            MP4, MOV, WEBM or AVI · up to your configured limit
+          </span>
+
+          <input
+            id="videoPicker"
+            name="video"
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm,video/x-msvideo"
+            hidden
+          />
+
+          <button
+            id="videoChoose"
+            type="button"
+          >
+            Choose video
+          </button>
+        </div>
+      </section>
+
+      <!-- Global Error -->
+      <p
+        id="error"
+        class="error"
+        role="alert"
+        aria-live="polite"
+      ></p>
+
+      <!-- Upload Progress -->
+      <section class="card">
+        <div
+          id="progressWrap"
+          class="progress"
+          hidden
+          aria-live="polite"
+        >
+          <div>
+            <span id="progressLabel">Uploading</span>
+            <span id="progressPct">0%</span>
+          </div>
+
+          <progress
+            id="progress"
+            max="100"
+            value="0"
+          >
+            0%
+          </progress>
+        </div>
+      </section>
+
+      <!-- Before -->
+      <section
+        id="beforeSection"
+        class="card"
+        hidden
+        aria-labelledby="beforeTitle"
+      >
+        <div class="sectionTitle">
+          <h2 id="beforeTitle">Before</h2>
+          <span id="beforeMeta" class="muted"></span>
+        </div>
+
+        <div
+          id="before"
+          class="media"
+        ></div>
+
+        <div
+          id="beforeInfo"
+          class="info"
+        ></div>
+      </section>
+
+      <!-- Processing Status -->
+      <section
+        id="statusSection"
+        class="card"
+        hidden
+        aria-labelledby="statusText"
+      >
+        <div
+          class="stepper"
+          role="list"
+          aria-label="Compression progress"
+        >
+          <span
+            data-step="queued"
+            role="listitem"
+          >
+            1&nbsp; Queued
+          </span>
+
+          <i aria-hidden="true"></i>
+
+          <span
+            data-step="processing"
+            role="listitem"
+          >
+            2&nbsp; Processing
+          </span>
+
+          <i aria-hidden="true"></i>
+
+          <span
+            data-step="done"
+            role="listitem"
+          >
+            3&nbsp; Done
+          </span>
+        </div>
+
+        <p
+          id="statusText"
+          aria-live="polite"
+        >
+          Waiting…
+        </p>
+
+        <p>
+          Elapsed:
+          <strong id="elapsed">0.0s</strong>
+        </p>
+
+        <button
+          id="retry"
+          class="secondary"
+          type="button"
+          hidden
+        >
+          Try again
+        </button>
+      </section>
+
+      <!-- Comparison Result -->
+      <section
+        id="afterSection"
+        class="card"
+        hidden
+        aria-labelledby="comparisonTitle"
+      >
+        <div class="sectionTitle">
+          <h2 id="comparisonTitle">Before vs after</h2>
+          <div
+            id="badge"
+            class="badge"
+            aria-live="polite"
+          ></div>
+        </div>
+
+        <div class="compare">
+          <div>
+            <h3>Before</h3>
+
+            <div
+              id="afterBefore"
+              class="media"
+            ></div>
+          </div>
+
+          <div>
+            <h3>After</h3>
+
+            <div
+              id="after"
+              class="media"
+            ></div>
+          </div>
+        </div>
+
+        <div
+          id="stats"
+          class="stats"
+        ></div>
+
+        <a
+          id="download"
+          class="button"
+          href="#"
+          download
+        >
+          Download compressed file
+        </a>
+
+        <div class="charts">
+          <div>
+            <h3>Size comparison</h3>
+
+            <canvas
+              id="sizeChart"
+              aria-label="Size comparison chart"
+              role="img"
+            ></canvas>
+          </div>
+
+          <div>
+            <h3>Quality scores</h3>
+
+            <canvas
+              id="qualityChart"
+              aria-label="Quality scores chart"
+              role="img"
+            ></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- AI vs Baseline -->
+      <section
+        class="card"
+        aria-labelledby="baselineTitle"
+      >
+        <div class="sectionTitle">
+          <h2 id="baselineTitle">AI vs baseline</h2>
+
+          <button
+            id="compareBtn"
+            class="secondary"
+            type="button"
+            disabled
+          >
+            Run comparison
+          </button>
+        </div>
+
+        <p
+          id="compareSummary"
+          class="muted"
+        >
+          Compress a file first to enable comparison.
+        </p>
+
+        <p
+          id="compareError"
+          class="error"
+          role="alert"
+          aria-live="polite"
+        ></p>
+
+        <div id="compareTable"></div>
+
+        <canvas
+          id="compareChart"
+          aria-label="AI versus baseline comparison chart"
+          role="img"
+        ></canvas>
+      </section>
+
+      <!-- Footer -->
+      <footer>
+        Same-origin API:
+        <span id="apiFooter"></span>
+      </footer>
+    </main>
+
+    <script
+      type="module"
+      src="/static/js/app.js"
+    ></script>
+  </body>
+</html>

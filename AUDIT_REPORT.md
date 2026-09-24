@@ -23,8 +23,70 @@ Image work is offloaded with `asyncio.to_thread` in `app/core/image_compressor.p
 
 ## 6. UI — PARTIAL
 
-Root cause of the original unstyled screenshot: the app had a one-off `/static/test.html` route but no `/static` `StaticFiles` mount, so `/static/css/test.css` and `/static/js/app.js` returned 404. The mount is now present and matches the HTML URLs. The upload UI now has separate Image/Video panels with real tab visibility toggling, styled previews/progress/cards, responsive charts, and an honest inline comparison-endpoint error. Browser screenshot verification remains blocked because no Chromium/Playwright executable is installed in this environment; syntax checks are not treated as visual evidence. The backend `/api/v1/compare` route is still absent.
+Root cause of the original unstyled screenshot: the app previously had a one-off `/static/test.html` route but no `/static` `StaticFiles` mount, so `/static/css/test.css` and `/static/js/app.js` returned 404. The mount is now present, uses an absolute repository-relative `Path`, and matches the HTML URLs. The canonical layout is `static/test.html`, `static/css/test.css`, and `static/js/{app,charts}.js`.
+
+HTTP verification against a running Uvicorn server on 2026-09-24: `/static/test.html` returned 200 (`text/html`), `/static/css/test.css` returned 200 (`text/css`), and `/static/js/app.js` plus `/static/js/charts.js` returned 200 (`text/javascript`). The upload UI source includes separate Image/Video panels with real tab visibility toggling, styled previews/progress/cards, responsive charts, and an honest inline comparison-endpoint error.
+
+Visual verification is not complete: no Chromium, Playwright, Puppeteer, or Selenium executable/package is installed in this environment, and therefore no headless screenshot or six-state browser report can be honestly claimed. Syntax checks are not treated as visual evidence. The backend `/api/v1/compare` route is still absent.
 
 ## 7. Verification — PARTIAL
 
 `python -m compileall app` succeeds; `node --check` passes for both UI modules. Browser/manual verification was not executable in this environment. The 501 route gap is closed at the HTTP surface, but the complete video worker and compare flow are not yet proven.
+
+## 8. Static directory deep audit — FAIL/PARTIAL
+
+Audit scope: every file under `static/` as of 2026-09-24.
+
+### Inventory and dependency map
+
+| File | Size | Referenced by | Finding |
+|---|---:|---|---|
+| `static/test.html` | 8,054 B | `app/main.py`; loads `css/test.css` and `js/app.js` | Canonical page; no duplicate file found |
+| `static/css/test.css` | 14,580 B | `test.html` | Canonical stylesheet; no duplicate file found |
+| `static/js/app.js` | 23,155 B | `test.html` | Main controller; contains a critical startup token and several data-safety issues |
+| `static/js/charts.js` | 7,788 B | imported by `app.js` | Chart module; no duplicate file found |
+
+There are no additional files, hidden duplicate assets, nested build outputs, or duplicate directories in `static/`. SHA-1 checksums are unique across the four files. `test.html` appearing twice in a shell glob was the same path, not a second copy.
+
+### Critical defect
+
+- `static/js/app.js:1` contains the bare token `javascript` before the import declaration. `node --check` accepts it as syntactically valid JavaScript, but module evaluation raises `ReferenceError: javascript is not defined`; consequently imports, event bindings, configuration loading, and the complete UI stop before startup. Remove that line. This is the highest-priority fix.
+
+### High-priority functional issues
+
+- `static/js/app.js:1079-1100`: `info()` accepts only `[label, value]`, while the comparison table passes three-element rows (`Metric`, fixed, AI). The third value is silently discarded, so the “AI vs baseline” table cannot show both result columns. Change the renderer to support a real table or render separate columns explicitly.
+- `static/js/app.js:1046-1065`: the comparison request is `POST /api/v1/compare` with no job ID, file, or comparison payload. Unless the backend derives the last job from server-side session state, this cannot identify what to compare. The current report already records that the backend route is absent.
+- `static/js/app.js:258-265`: cloning the original video element copies the `src`, but image/video metadata handlers are not copied. The comparison preview is therefore less reliably initialized than the primary preview, especially for video metadata and error reporting.
+- `static/js/app.js:350`: resumable-upload localStorage keys contain filename and size but not API base, file identity/hash, or modification time. A same-name/same-size different file can resume against the wrong upload session; changing API endpoints can also reuse an unrelated session ID.
+
+### Security and robustness issues
+
+- `static/js/app.js:108-124`, `207-211`, `674-709`, and `1079-1100`: `info()` builds `innerHTML` from file names and API-returned values without escaping. A crafted filename or compromised/malicious API response can inject markup/script into the page. Use `textContent` DOM nodes or an HTML escaping function for every displayed value.
+- `static/js/app.js:315-348`: invalid or missing `small_file_threshold` falls through to chunked upload, which may be acceptable, but there is no upper-bound validation for API-provided `chunk_size`; an extreme value can cause unusable memory/request behavior. Validate finite integer limits client-side and rely on matching server validation.
+- `static/js/app.js:648-653`, `711-713`: `base()` concatenates arbitrary localStorage/user input with API-provided paths. Restrict the API base to an allowed `http(s)` origin or same-origin path, and resolve URLs with `new URL()` to avoid malformed or unexpected destinations.
+- `static/js/app.js:1129`: initial `loadConfig().catch(err)` reports an error but leaves upload controls active; the user can select a file and receive a second configuration error. Disable upload controls until configuration succeeds or provide an explicit unavailable state.
+- `static/js/charts.js:423-467`: comparison chart values are clamped only by `drawBarChart`'s non-negative conversion, not by a meaningful percentage range. Invalid reductions above 100% or non-finite values can produce misleading chart scaling.
+- `static/js/charts.js:295-300`: quality chart uses fixed left/right margins; at very narrow canvas widths, labels and bars can overlap. The responsive CSS stacks charts but does not change the canvas drawing margins.
+- `static/js/charts.js:1-417`: charts are drawn once and are not redrawn on resize or device-pixel-ratio changes. Resizing the viewport can leave stale dimensions or blurry charts.
+
+### Duplication review
+
+- No byte-identical duplicate files exist.
+- Repeated HTML classes (`card`, `media`, `muted`, `drop`, `error`, etc.) are intentional shared component classes, not duplicate components.
+- `before`, `afterBefore`, and `after` are separate containers for distinct workflow states; however, the preview-building logic is duplicated conceptually and would be safer as a reusable media-element factory.
+- Formatting patterns are highly repetitive in both JavaScript files (multi-line single expressions and repeated DOM hide/show pairs), but this is maintainability duplication rather than a duplicate asset. Small helpers such as `show(element)`/`hide(element)` and `setText()` would reduce it.
+
+### Accessibility and compatibility
+
+- `test.html:292-299` renders the download control as an anchor with `href="#"` until completion; it should be disabled/hidden until a valid URL exists to avoid a confusing no-op navigation.
+- Canvas charts have labels but no textual data fallback. Users who cannot perceive canvas content do not receive equivalent values from the chart itself; the stats/table should be the authoritative accessible alternative and should remain visible near each chart.
+- The CSS uses `:has()` at `static/css/test.css:866`. Modern browsers support it, but older embedded browsers may ignore that mobile padding rule. A class-based fallback would be safer if legacy support matters.
+- The page depends on Google Fonts at `test.html:10-14`; offline deployments fall back to system fonts, which is functional but changes visual metrics.
+
+### Recommended repair order
+
+1. Delete `static/js/app.js:1` (`javascript`) and rerun a browser smoke test.
+2. Replace unsafe `innerHTML` rendering with escaped/text-based DOM rendering; fix the three-column comparison table.
+3. Make comparison requests carry the current job/file identity and implement/verify the backend endpoint.
+4. Harden resumable-upload identity and API URL validation.
+5. Add browser tests for initialization, image/video switching, upload failure/retry, result rendering, and comparison rendering; add chart resize coverage.

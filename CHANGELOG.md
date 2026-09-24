@@ -5,6 +5,7 @@
 - Initial async image compression API and resumable upload flow.
 # Unreleased
 
+- Fixed the hidden-state bug in the static test bench by using the native `hidden` attribute consistently; removed conflicting `hidden` classes and synchronized tab/panel and upload-state visibility through the DOM property.
 - Fixed the static test bench rendering path and upload-tab behavior: the FastAPI `/static` mount now matches the HTML asset URLs, and inactive Image/Video upload panels are hidden. Added styled comparison-endpoint errors and explicit upload-panel controls.
 
 - Rebuilt the offline static test bench with image/video tabs, previews, resumable-upload progress, job stepper, before/after media, responsive canvas charts, download handling, and visible errors.
