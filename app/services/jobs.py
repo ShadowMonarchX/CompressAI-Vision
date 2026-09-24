@@ -2,8 +2,9 @@ import asyncio, time, uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from app.config import settings
+from app.core.config import settings
 from app.core.image_compressor import ImageCompressor
+from app.utils.helpers import format_size
 
 class JobState(str, Enum): QUEUED="queued"; PROCESSING="processing"; DONE="done"; FAILED="failed"
 @dataclass
@@ -25,7 +26,7 @@ async def run_image(job):
     try:
         score, params, iterations = await ImageCompressor(max_iterations=settings.max_iterations).compress(job.source,out)
         size=job.source.stat().st_size; out_size=out.stat().st_size
-        job.output=out; job.metrics={"original_size":size,"compressed_size":out_size,"reduction_percent":round((1-out_size/size)*100,2),**score,"processing_time_seconds":round(time.perf_counter()-started,4),"iterations":iterations,"params_used":params}; job.transition(JobState.DONE)
+        job.output=out; job.metrics={"original_size":size,"compressed_size":out_size,"original_size_human":format_size(size),"compressed_size_human":format_size(out_size),"reduction_percent":round((1-out_size/size)*100,2),**score,"processing_time_seconds":round(time.perf_counter()-started,4),"iterations":iterations,"params_used":params}; job.transition(JobState.DONE)
     except Exception as exc: job.error=str(exc); job.transition(JobState.FAILED)
 async def create_job(source):
     job=JobRecord(uuid.uuid4().hex,source); await jobs.add(job); asyncio.create_task(run_image(job)); return job.job_id

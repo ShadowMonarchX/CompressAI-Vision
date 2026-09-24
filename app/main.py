@@ -2,10 +2,23 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from app.api.v1 import router as v1_router
+from app.router.router import router
+from app.core.logging import configure_logging
 from app.core.exceptions import DomainError
-app=FastAPI(title="CompressAI Vision",version="1.0.0")
-app.include_router(v1_router)
+configure_logging()
+app=FastAPI(
+    title="CompressAI Vision",
+    version="1.0.0",
+    openapi_tags=[
+        {"name": "health", "description": "Service health and configuration."},
+        {"name": "compress", "description": "Compression job submission."},
+        {"name": "upload", "description": "Upload management."},
+        {"name": "jobs", "description": "Compression job status."},
+        {"name": "compare", "description": "AI-assisted versus fixed-baseline compression."},
+        {"name": "v2", "description": "Reserved for the v2 API surface."},
+    ],
+)
+app.include_router(router)
 @app.exception_handler(DomainError)
 async def domain_error_handler(request:Request,exc:DomainError): return JSONResponse(status_code=exc.status_code,content={"error":exc.message,"code":exc.code})
 static_dir=Path(__file__).resolve().parent.parent/"static"

@@ -1,3 +1,4 @@
+"""Feature extraction used by compression parameter prediction."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,17 +20,24 @@ class VideoFeatures:
 
 class BaseFeatureExtractor(ABC):
     @abstractmethod
-    def extract(self, path: Path): ...
+    def extract(self, path: Path):
+        """Extract model features from a media file."""
 
 class ImageFeatureExtractor(BaseFeatureExtractor):
     def extract(self, path: Path) -> ImageFeatures:
-        with Image.open(path) as im:
-            a = np.asarray(im.convert("L").resize((min(512, im.width), min(512, im.height))), dtype=np.float32)
-        hist = np.histogram(a, bins=256, range=(0, 256), density=True)[0]
-        entropy = float(-(hist[hist > 0] * np.log2(hist[hist > 0])).sum())
-        gx, gy = np.gradient(a)
-        return ImageFeatures(entropy, float(np.mean(np.hypot(gx, gy) > 18)), float(np.var(a)))
+        with Image.open(path) as image:
+            width = max(1, min(512, image.width))
+            height = max(1, min(512, image.height))
+            pixels = np.asarray(image.convert("L").resize((width, height)), dtype=np.float32)
+        histogram = np.histogram(pixels, bins=256, range=(0, 256))[0]
+        probabilities = histogram[histogram > 0] / pixels.size
+        entropy = float(-(probabilities * np.log2(probabilities)).sum())
+        gradient_x, gradient_y = np.gradient(pixels)
+        edge_density = float(np.mean(np.hypot(gradient_x, gradient_y) > 18))
+        return ImageFeatures(entropy, edge_density, float(np.var(pixels)))
 
 class VideoFeatureExtractor(BaseFeatureExtractor):
     def extract(self, path: Path) -> VideoFeatures:
+        """Safe placeholder until an FFmpeg metadata adapter is added."""
         return VideoFeatures()
+

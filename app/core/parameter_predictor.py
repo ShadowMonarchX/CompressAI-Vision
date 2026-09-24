@@ -1,3 +1,4 @@
+"""Compression parameter prediction strategies."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -13,10 +14,16 @@ class CompressionParams:
 
 class BaseParameterPredictor(ABC):
     @abstractmethod
-    def predict(self, features: Any) -> CompressionParams: ...
+    def predict(self, features: Any) -> CompressionParams:
+        """Choose codec parameters for extracted media features."""
 
 class HeuristicPredictor(BaseParameterPredictor):
     def predict(self, features: ImageFeatures | VideoFeatures) -> CompressionParams:
-        if isinstance(features, VideoFeatures): return CompressionParams("libx264", reason="video baseline")
-        quality = max(55, min(92, round(58 + (features.edge_density * 100 + features.entropy * 3) * .18)))
+        if isinstance(features, VideoFeatures):
+            return CompressionParams("libx264", reason="video baseline")
+        if not isinstance(features, ImageFeatures):
+            raise TypeError("HeuristicPredictor expects image or video features")
+        quality = round(58 + (features.edge_density * 100 + features.entropy * 3) * 0.18)
+        quality = max(55, min(92, quality))
         return CompressionParams("JPEG", quality=quality, reason="entropy/edge-detail heuristic")
+

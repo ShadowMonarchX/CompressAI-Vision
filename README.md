@@ -40,6 +40,7 @@ All endpoints use the `/api/v1` prefix and appear grouped in `/docs`.
 | GET | `/api/v1/jobs/{job_id}/download` | Download completed result |
 | GET | `/api/v1/health` | Read service readiness |
 | GET | `/api/v1/config` | Read UI limits |
+| POST | `/api/v1/compare/image` | Compare adaptive compression with a fixed-quality baseline |
 
 Example:
 
@@ -56,14 +57,16 @@ Submission returns `202` and `{"job_id":"...","status":"queued"}`.
 ```text
 app/
 ├── main.py                 # FastAPI setup, errors, static mount
-├── api/deps.py             # injectable dependencies
-├── api/v1/routers/         # compression, upload, jobs, system
-├── core/                   # extraction, prediction, evaluation, compression
-├── schemas/models.py        # Pydantic models
-└── services/                # jobs and storage boundaries
+├── deps.py                 # injectable dependencies
+├── router/                 # top-level, versioned routers (v1 active, v2 reserved)
+├── core/                   # settings, logging, security, and compression algorithms
+├── models/v1/               # split request and response Pydantic models
+└── services/                # AI orchestration, jobs, storage, and cache boundaries
 ```
 
-To add v2, copy `app/api/v1` to `app/api/v2`, change the aggregator prefix to `/api/v2`, adapt v2 routers, and add one `app.include_router(v2_router)` line. V1 remains unchanged.
+To add v2, add endpoint modules under `app/router/v2/endpoints`, include them from `app/router/v2/router.py`, and add versioned models under `app/models/v2`. The reserved v2 router is currently excluded from OpenAPI and has no routes.
+
+Compression algorithms remain in `core/` (including the deliberate extension `exceptions.py`); `services/ai_service.py` owns orchestration and business rules. This keeps model logic separate from external integration. Authentication starts with an optional API-key header (`API_KEY`), with JWT/OAuth as the future upgrade path. `services/cache_service.py` provides a TTL in-memory cache, designed to be replaced by Redis when persistence or multi-process sharing is needed.
 
 ## Configuration
 
@@ -82,4 +85,3 @@ Compression runs away from the request path with `asyncio.to_thread`; job state 
 ## Known limitations
 
 This is a local test bench. Video readiness is checked through FFmpeg, while the current worker is primarily image-oriented. The upload namespace is prepared for resumable storage integration. Authentication, rate limiting, durable queues, and browser automation tests are not included.
-
