@@ -21,10 +21,10 @@ Image work is offloaded with `asyncio.to_thread` in `app/core/image_compressor.p
 
 `app/main.py` streams request chunks directly to preallocated disk offsets, exposes resumable status, validates optional SHA-256 checksums, enforces declared/actual size, checks free disk space, and uses `FileResponse` for downloads. The large-file memory test is not yet included.
 
-## 6. UI — FAIL
+## 6. UI — PARTIAL
 
-`static/test.html` remains a minimal direct-image demo; drag/drop, chunk routing, metrics, comparison, and visible progress/error handling still need implementation.
+Root cause of the original unstyled screenshot: the app had a one-off `/static/test.html` route but no `/static` `StaticFiles` mount, so `/static/css/test.css` and `/static/js/app.js` returned 404. The mount is now present and matches the HTML URLs. The upload UI now has separate Image/Video panels with real tab visibility toggling, styled previews/progress/cards, responsive charts, and an honest inline comparison-endpoint error. Browser screenshot verification remains blocked because no Chromium/Playwright executable is installed in this environment; syntax checks are not treated as visual evidence. The backend `/api/v1/compare` route is still absent.
 
 ## 7. Verification — PARTIAL
 
-`python -m compileall app` succeeds. Import and full pytest/health/video integration verification could not be completed because dependency resolution was blocked by unavailable network access. The 501 route gap is closed at the HTTP surface, but the complete video worker is not yet proven.
+`python -m compileall app` succeeds; `node --check` passes for both UI modules. Browser/manual verification was not executable in this environment. The 501 route gap is closed at the HTTP surface, but the complete video worker and compare flow are not yet proven.

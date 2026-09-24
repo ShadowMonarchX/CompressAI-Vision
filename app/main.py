@@ -1,11 +1,13 @@
 import hashlib, math, shutil, uuid
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, ORJSONResponse, StreamingResponse
 from app.config import settings
 from app.services.jobs import jobs, create_job
 
 app=FastAPI(title="CompressAI Vision",version="1.0.0",default_response_class=ORJSONResponse)
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent.parent / "static"), name="static")
 uploads={}
 ALLOWED={"image/jpeg","image/png","image/webp","video/mp4","video/webm","video/quicktime"}
 async def save_upload(file):
@@ -70,3 +72,6 @@ async def download(job_id:str):
     return FileResponse(j.output,filename=j.output.name)
 @app.get("/api/v1/health")
 async def health(): return {"status":"ok","ffmpeg":bool(shutil.which(settings.ffmpeg_binary)),"workers":settings.max_workers or 1,"chunk_size":settings.chunk_size}
+@app.get("/api/v1/config")
+async def config():
+    return {"max_file_size":settings.max_file_size,"small_file_threshold":settings.small_file_threshold,"chunk_size":settings.chunk_size,"ssim_threshold":settings.ssim_threshold}

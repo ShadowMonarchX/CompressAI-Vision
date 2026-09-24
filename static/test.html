@@ -1,13 +1,10 @@
-<!doctype html>
-<meta charset="utf-8"><title>CompressAI Vision demo</title>
-<h1>CompressAI Vision</h1>
-<input id="file" type="file"><button id="go">Compress</button><progress id="p" max="1" value="0"></progress>
-<pre id="out"></pre>
-<script>
-const out=document.querySelector('#out'), p=document.querySelector('#p');
-go.onclick=async()=>{const f=file.files[0]; if(!f)return; const d=new FormData(); d.append('file',f); const r=await fetch('/api/v1/compress/image',{method:'POST',body:d}); const j=await r.json();
- if(!r.ok){out.textContent=JSON.stringify(j,null,2);return} out.textContent='Queued '+j.job_id;
- let s; do { await new Promise(x=>setTimeout(x,500)); s=await (await fetch('/api/v1/jobs/'+j.job_id)).json(); out.textContent=JSON.stringify(s,null,2); } while(s.status==='queued'||s.status==='processing');
- if(s.status==='done') out.innerHTML+=`\n<a href="${s.download_url}">Download compressed file</a>`;
-};
-</script>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CompressAI Vision test bench</title><link rel="stylesheet" href="/static/css/test.css"></head><body>
+<main><header><div><p class="eyebrow">CompressAI Vision</p><h1>Compression test bench</h1><p class="muted">See what the AI-assisted pipeline does to your media.</p></div><label class="api">API <input id="api" placeholder="same origin"></label></header>
+<nav class="tabs"><button class="active" data-mode="image">Image</button><button data-mode="video">Video</button></nav>
+<section id="imagePanel" class="card uploadPanel"><div id="imageDrop" class="drop"><strong>Drop an image here</strong><span>or choose a file to begin</span><input id="imagePicker" type="file" accept="image/*"><button id="imageChoose">Choose image</button></div></section>
+<section id="videoPanel" class="card uploadPanel hidden"><div id="videoDrop" class="drop"><strong>Drop a video here</strong><span>or choose a file to begin</span><input id="videoPicker" type="file" accept="video/*"><button id="videoChoose">Choose video</button></div></section>
+<p id="error" class="error" role="alert"></p><section class="card"><div id="progressWrap" class="progress hidden"><div><span id="progressLabel">Uploading</span><span id="progressPct">0%</span></div><progress id="progress" max="100" value="0"></progress></div></section>
+<section id="beforeSection" class="card hidden"><div class="sectionTitle"><h2>Before</h2><span id="beforeMeta" class="muted"></span></div><div id="before" class="media"></div><div id="beforeInfo" class="info"></div></section>
+<section id="statusSection" class="card hidden"><div class="stepper"><span data-step="queued">1&nbsp; Queued</span><i></i><span data-step="processing">2&nbsp; Processing</span><i></i><span data-step="done">3&nbsp; Done</span></div><p id="statusText">Waiting…</p><p>Elapsed: <strong id="elapsed">0.0s</strong></p><button id="retry" class="secondary hidden">Try again</button></section>
+<section id="afterSection" class="card hidden"><div class="sectionTitle"><h2>Before vs after</h2><div id="badge" class="badge"></div></div><div class="compare"><div><h3>Before</h3><div id="afterBefore" class="media"></div></div><div><h3>After</h3><div id="after" class="media"></div></div></div><div id="stats" class="stats"></div><a id="download" class="button" download>Download compressed file</a><div class="charts"><div><h3>Size comparison</h3><canvas id="sizeChart"></canvas></div><div><h3>Quality scores</h3><canvas id="qualityChart"></canvas></div></div></section>
+<section class="card"><div class="sectionTitle"><h2>AI vs baseline</h2><button id="compareBtn" class="secondary" disabled>Run comparison</button></div><p id="compareSummary" class="muted">Compress a file first to enable comparison.</p><p id="compareError" class="error" role="alert"></p><div id="compareTable"></div><canvas id="compareChart"></canvas></section><footer>Same-origin API: <span id="apiFooter"></span></footer></main><script type="module" src="/static/js/app.js"></script></body></html>
