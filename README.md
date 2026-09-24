@@ -35,13 +35,37 @@ The project is intentionally small and local-first. Jobs and uploaded files are 
 On macOS with Homebrew:
 
 ```bash
-brew install uv ffmpeg
+brew install uv ffmpeg python@3.11
 python3 --version
 uv --version
 ffmpeg -version
 ```
 
-On Linux, install Python and FFmpeg using the package manager for your distribution, then install `uv` using the official uv instructions.
+On Ubuntu 22.04 or newer:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip ffmpeg curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+python3 --version
+uv --version
+ffmpeg -version
+```
+
+The project requires Python 3.11 or newer. If your Ubuntu release provides an older Python version, install Python 3.11+ before running `uv sync`.
+
+On Windows, install Python, `uv`, and FFmpeg with WinGet from PowerShell:
+
+```powershell
+winget install --id Python.Python.3.11 -e
+winget install --id astral-sh.uv -e
+winget install --id Gyan.FFmpeg.Shared -e
+python --version
+uv --version
+ffmpeg -version
+```
+
+Restart PowerShell after installation if any command is not found. Alternatively, install Python from [python.org](https://www.python.org/downloads/windows/), `uv` from the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/), and FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html).
 
 The application itself does not require PyTorch, CUDA, Metal, or an Apple MPS runtime. Its current image pipeline is Pillow and NumPy based and runs on the CPU.
 
@@ -71,10 +95,6 @@ The runtime dependencies are declared in `pyproject.toml` and locked in `uv.lock
 | `numpy` | Feature extraction and quality calculations |
 | `aiofiles` | Async file support for the application environment |
 | `orjson` | Fast JSON support for the application environment |
-| `pytest`, `httpx` | Development and API tests |
-| `ruff` | Formatting and linting |
-| `mypy` | Static type checking |
-| `pre-commit` | Repository hooks |
 
 ## Run locally
 
@@ -304,6 +324,94 @@ The service records these image metrics:
 
 JPEG size reduction is not fixed. A flat PNG, a detailed photograph, a noisy image, and an already-compressed JPEG can produce very different results. PNG-to-JPEG may show a large reduction, while an already-small JPEG may show little reduction or become larger. A larger file does not automatically mean better visual quality; use SSIM/PSNR and inspect the output.
 
+### Example results and `.work` files
+
+The following values are examples of the response shape and calculation. They are not guaranteed results; run the service with your own files to obtain real values.
+
+#### Example image job
+
+Before compression:
+
+```text
+.work/4b7.../holiday.png       8,421,376 bytes (8.03 MB)
+```
+
+After adaptive JPEG compression:
+
+```text
+.work/4b7.../compressed.jpg   2,145,630 bytes (2.05 MB)
+```
+
+Calculation:
+
+```text
+reduction_percent = (1 - 2,145,630 / 8,421,376) * 100
+                  = 74.52%
+```
+
+Example image metrics:
+
+| Metric | Example value |
+|---|---:|
+| Original size | 8.03 MB |
+| Compressed size | 2.05 MB |
+| Size reduction | 74.52% |
+| SSIM | 0.94 / 1.00 |
+| PSNR | 36.8 dB |
+| Iterations | 2 |
+| Final JPEG quality | 76 |
+| Processing time | 2.184 seconds |
+
+For this example, the quality target was reached on the second attempt. A different image may require one, two, or three attempts depending on its detail and the `SSIM_THRESHOLD` setting.
+
+#### Example video job
+
+Before FFmpeg compression:
+
+```text
+.work/91a.../camera.mp4       52,428,800 bytes (50.00 MB)
+```
+
+After FFmpeg compression:
+
+```text
+.work/91a.../compressed.mp4   18,874,368 bytes (18.00 MB)
+```
+
+Calculation:
+
+```text
+reduction_percent = (1 - 18,874,368 / 52,428,800) * 100
+                  = 64.00%
+```
+
+Example video metrics:
+
+| Metric | Example value |
+|---|---:|
+| Original size | 50.00 MB |
+| Compressed size | 18.00 MB |
+| Size reduction | 64.00% |
+| Codec | `libx264` |
+| Preset | `medium` |
+| CRF | `28` |
+| Iterations | 1 |
+| Processing time | 18.6 seconds |
+
+The current video endpoint does not calculate video SSIM or PSNR. Video responses therefore report `ssim: 0.0` and `psnr: 0.0` as placeholders. Use the file-size reduction and visually inspect the video; do not interpret those placeholder values as a video-quality score. Video time depends heavily on duration, resolution, frame rate, codec, and CPU speed.
+
+To inspect actual files after a test:
+
+```bash
+find .work -type f -print -exec du -h {} \;
+```
+
+On Windows PowerShell:
+
+```powershell
+Get-ChildItem .\.work -Recurse -File | Select-Object FullName, Length
+```
+
 ## CPU, GPU, Apple MPS, and timing
 
 ### What the current implementation uses
@@ -321,7 +429,11 @@ Therefore, there is no honest fixed answer such as “GPU takes 2 seconds and MP
 
 ### Measure your own machine
 
-Use the following shell loop after starting the server. It records wall-clock request time and the service-reported processing time:
+Start the server first, then run the command for your operating system. These commands submit every `.jpg` and `.png` file in `./samples`. They measure the upload request time; the response contains the job ID, so poll that job to obtain the final compression metrics.
+
+#### macOS and Ubuntu/Linux
+
+Run this in Terminal or a Bash shell:
 
 ```bash
 for image in ./samples/*.jpg ./samples/*.png; do
@@ -332,6 +444,40 @@ for image in ./samples/*.jpg ./samples/*.png; do
     http://127.0.0.1:8000/api/v1/compress/image
   echo
 done
+```
+
+On macOS, `/usr/bin/time -p` is included with the operating system. On Ubuntu/Linux, install it if needed:
+
+```bash
+sudo apt install -y time
+```
+
+#### Windows PowerShell
+
+Run this in PowerShell. Use `curl.exe` so PowerShell does not substitute its web-request alias:
+
+```powershell
+Get-ChildItem -Path .\samples -File -Include *.jpg,*.png | ForEach-Object {
+    $image = $_.FullName
+    Write-Host "--- $image"
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    $response = curl.exe -sS -X POST `
+        -F "file=@$image" `
+        http://127.0.0.1:8000/api/v1/compress/image
+    $timer.Stop()
+    $response
+    Write-Host ("elapsed_seconds={0:N3}" -f $timer.Elapsed.TotalSeconds)
+}
+```
+
+If the `samples` directory does not exist, create it and copy test images into it:
+
+```bash
+mkdir -p samples
+```
+
+```powershell
+New-Item -ItemType Directory -Force .\samples
 ```
 
 For a precise measurement, poll each returned job ID until `status` is `done`, then record `metrics.processing_time_seconds`, `original_size`, `compressed_size`, `ssim`, `psnr`, and `iterations`. Repeat each file at least three times and report the median. Run CPU, GPU, and MPS comparisons only after implementing separate accelerated backends; the current code cannot produce those comparisons.
