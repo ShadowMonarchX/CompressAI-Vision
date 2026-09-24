@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
+
 from app.core.exceptions import CompressionFailedError
 
 

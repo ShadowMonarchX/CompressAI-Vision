@@ -1,2 +1,3 @@
 from fastapi import APIRouter
-router=APIRouter(prefix='/upload',tags=['upload'])
+
+router = APIRouter(prefix="/upload", tags=["upload"])

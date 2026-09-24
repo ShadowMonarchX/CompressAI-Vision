@@ -8,9 +8,21 @@ returns a filesystem path so the AI services remain independent of FastAPI's
 import uuid
 from pathlib import Path
 
-from app.core.exceptions import FileTooLargeError, UnsupportedMediaTypeError, ServiceUnavailableError, StorageError
+from app.core.exceptions import (
+    FileTooLargeError,
+    ServiceUnavailableError,
+    StorageError,
+    UnsupportedMediaTypeError,
+)
 
-ALLOWED = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm", "video/quicktime"}
+ALLOWED = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+}
 CHUNK_SIZE = 1024 * 1024
 
 
