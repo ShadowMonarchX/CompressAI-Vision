@@ -1,10 +1,22 @@
-from typing import Protocol
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+from .feature_extraction import ImageFeatures, VideoFeatures
 
-class Predictor(Protocol):
-    def predict_params(self, features: dict[str, float]) -> dict[str, int | str]: ...
+@dataclass(frozen=True)
+class CompressionParams:
+    codec: str
+    quality: int = 80
+    preset: str = "medium"
+    crf: int = 28
+    reason: str = ""
 
-class HeuristicPredictor:
-    def predict_params(self, features: dict[str, float]) -> dict[str, int | str]:
-        detail = features["edge_density"] * 100 + features["entropy"] * 3
-        quality = max(55, min(92, round(58 + detail * .18)))
-        return {"codec": "JPEG", "quality": quality, "reason": "entropy/edge-detail heuristic"}
+class BaseParameterPredictor(ABC):
+    @abstractmethod
+    def predict(self, features: Any) -> CompressionParams: ...
+
+class HeuristicPredictor(BaseParameterPredictor):
+    def predict(self, features: ImageFeatures | VideoFeatures) -> CompressionParams:
+        if isinstance(features, VideoFeatures): return CompressionParams("libx264", reason="video baseline")
+        quality = max(55, min(92, round(58 + (features.edge_density * 100 + features.entropy * 3) * .18)))
+        return CompressionParams("JPEG", quality=quality, reason="entropy/edge-detail heuristic")

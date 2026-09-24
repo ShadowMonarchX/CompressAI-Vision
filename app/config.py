@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 30
     max_workers: int | None = None
     ffmpeg_binary: str = "ffmpeg"
+    ffmpeg_timeout: int = 300
 
 settings = Settings()
 settings.work_dir.mkdir(parents=True, exist_ok=True)

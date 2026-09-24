@@ -12,6 +12,7 @@ dependencies = [
     "pillow>=10,<12",
     "numpy>=1.26,<3",
     "aiofiles>=24,<25",
+    "orjson>=3.10,<4",
 ]
 
 [dependency-groups]
