@@ -36,6 +36,25 @@ class CompressionParams:
         if not 0 <= self.crf <= 51:
             raise ValueError("crf must be between 0 and 51")
 
+@dataclass(frozen=True)
+class QualityTargetParams:
+    ssim_threshold: float
+    params: CompressionParams
+
+def quality_target_to_params(quality_target: int) -> QualityTargetParams:
+    """Map 1-100 quality to SSIM and encoder settings.
+
+    SSIM uses 0.50..0.99: lower is visibly degraded and higher is near-lossless.
+    JPEG quality rises with the target; CRF falls because lower CRF is better.
+    """
+    if isinstance(quality_target, bool) or not isinstance(quality_target, int) or not 1 <= quality_target <= 100:
+        raise ValueError("quality_target must be an integer between 1 and 100")
+    fraction = quality_target / 100
+    return QualityTargetParams(
+        0.50 + fraction * 0.49,
+        CompressionParams(codec="media", quality=round(30 + fraction * 65), crf=round(35 - fraction * 22), reason="quality_target mapping"),
+    )
+
 
 class BaseParameterPredictor(ABC):
     """Interface for feature-to-parameter prediction strategies."""

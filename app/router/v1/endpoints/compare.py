@@ -34,7 +34,7 @@ def _metrics(source: Path, output: Path, result: tuple, elapsed: float) -> dict:
 @router.post("/image", response_model=Comparison)
 async def compare_image(
     file: UploadFile = File(...),
-    ssim_threshold: float = Form(0.90, ge=0.0, le=1.0),
+    quality_target: int = Form(85, ge=1, le=100),
 ):
     """Compare adaptive and fixed-quality JPEG outputs for one image."""
     source = await save_upload(file, settings)
@@ -42,7 +42,7 @@ async def compare_image(
         root = Path(directory)
         started = time.perf_counter()
         ai_result, baseline_result = await AIService().compare_image(
-            source, root / "ai.jpg", root / "baseline.jpg", ssim_threshold
+            source, root / "ai.jpg", root / "baseline.jpg", quality_target
         )
         elapsed = time.perf_counter() - started
         return {
